@@ -1,0 +1,417 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: white;
+    color: #333;
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+}
+
+/* Left Panel - Calendar (30%) */
+.left-panel {
+    width: 30%;
+    padding: 20px;
+    border-right: 1px solid #ddd;
+}
+
+/* Right Panel - Timetable (70%) */
+.right-panel {
+    width: 70%;
+    padding: 20px;
+}
+
+/* Date Time */
+.current-datetime {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+/* Time Controls */
+.time-controls {
+    margin-bottom: 20px;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+}
+
+.start-time-selector, .time-format-selector {
+    display: flex;
+    align-items: center;
+}
+
+.start-time-selector label, .time-format-selector label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.start-time-selector select, .time-format-selector select {
+    padding: 5px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+}
+
+/* Year Navigation */
+.year-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.year-nav button {
+    background: none;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.year-nav span {
+    margin: 0 10px;
+    font-size: 14px;
+}
+
+.year-nav span:nth-child(2), .year-nav span:nth-child(4) {
+    color: #999;
+}
+
+.year-nav #currentYear {
+    font-weight: bold;
+    cursor: pointer;
+    color: #333;
+}
+
+/* Month Navigation */
+.month-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.month-nav button {
+    background: none;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.month-nav div {
+    margin: 0 15px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* Popups */
+.month-selector, .year-selector-popup {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    padding: 10px;
+    z-index: 10;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.month-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+}
+
+.month-option {
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.month-option:hover {
+    background: #f0f0f0;
+}
+
+.month-option.current {
+    background: #333;
+    color: white;
+}
+
+.year-selector-popup select {
+    width: 100%;
+    padding: 5px;
+}
+
+/* Calendar Container */
+.calendar-container {
+    height: calc(100vh - 180px);
+    display: flex;
+    flex-direction: column;
+}
+
+.month-section {
+    flex: 1;
+    margin-bottom: 10px;
+    padding: 5px;
+}
+
+.month-section.current {
+    background: #f8f8f8;
+}
+
+.month-section.prev, .month-section.next {
+    opacity: 0.5;
+}
+
+.month-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    text-align: center;
+    height: 100%;
+}
+
+.day-header {
+    font-weight: bold;
+    font-size: 9px;
+    color: #666;
+    padding: 2px;
+}
+
+.calendar-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 10px;
+    min-height: 18px;
+}
+
+.calendar-day.today {
+    background: navy;
+    color: white;
+    font-weight: bold;
+}
+
+.calendar-day.selected {
+    background: #007bff;
+    color: white;
+}
+
+.calendar-day.other-month {
+    color: #ccc;
+}
+
+.calendar-day.logged {
+    background: #28a745;
+    color: white;
+}
+
+/* Timetable */
+.timetable {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #ddd;
+}
+
+.timetable th {
+    background: #f5f5f5;
+    padding: 10px;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+.timetable td {
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+
+.start-time {
+    font-weight: bold;
+    width: 100px;
+    white-space: nowrap;
+}
+
+.timetable input {
+    width: 100%;
+    padding: 5px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    outline: none;
+}
+
+.duration {
+    width: 80px !important;
+}
+
+/* Buttons */
+button {
+    padding: 8px 15px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+button:hover {
+    background: #f5f5f5;
+}
+
+.add-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    margin-right: 5px;
+}
+
+.delete-btn {
+    background: #ff4444;
+    color: white;
+    border: none;
+    width: 25px;
+    height: 25px;
+    padding: 0;
+}
+
+.controls {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.controls button {
+    margin: 0 5px;
+    padding: 10px 20px;
+}
+
+#logDayBtn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+}
+
+#exportExcelBtn {
+    background: #2196F3;
+    color: white;
+    border: none;
+}
+
+#importExcelBtn {
+    background: #FF9800;
+    color: white;
+    border: none;
+}
+
+.controls button:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.controls button:active {
+    transform: translateY(0);
+}
+
+/* Buffer Row Styling */
+.buffer-row {
+    background-color: #e8f5e8 !important;
+    border-left: 4px solid #4CAF50 !important;
+}
+
+.buffer-row .duration {
+    background-color: #d4edda !important;
+    border: 1px solid #4CAF50 !important;
+    font-weight: bold;
+}
+
+.buffer-row .task {
+    background-color: #d4edda !important;
+    font-style: italic;
+}
+
+/* Category System Styling */
+.category-cell {
+    width: 150px;
+    min-width: 120px;
+}
+
+.category-container {
+    position: relative;
+    width: 100%;
+}
+
+.category-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.category-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.category-custom {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    font-size: 13px;
+    background-color: #f8f9fa;
+}
+
+.category-custom:focus {
+    outline: none;
+    border-color: #0056b3;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Category option styling */
+.category-select option {
+    padding: 5px;
+    font-size: 13px;
+}
+
+/* Selected category visual feedback */
+.category-select[data-selected="true"] {
+    font-weight: bold;
+    border-width: 2px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .left-panel, .right-panel {
+        width: 100%;
+    }
+
+    .left-panel {
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+    }
+}

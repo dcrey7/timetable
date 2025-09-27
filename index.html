@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timetable App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <!-- Year Navigation -->
+            <div class="year-nav">
+                <button id="prevYear">&lt;</button>
+                <span>2023</span>
+                <span id="currentYear" onclick="toggleYearSelector()">2024</span>
+                <span>2025</span>
+                <button id="nextYear">&gt;</button>
+            </div>
+
+            <!-- Year Selector Popup -->
+            <div class="year-selector-popup" id="yearSelectorPopup" style="display: none;">
+                <select id="yearSelect" size="10">
+                    <!-- Years will be populated -->
+                </select>
+            </div>
+
+            <!-- Month Navigation -->
+            <div class="month-nav">
+                <button id="monthUp">▲</button>
+                <div id="currentMonthDisplay" onclick="toggleMonthSelector()">September 2024</div>
+                <button id="monthDown">▼</button>
+            </div>
+
+            <!-- Month Selector Popup -->
+            <div class="month-selector" id="monthSelector" style="display: none;">
+                <div class="month-grid" id="monthGrid">
+                    <!-- Months will be populated -->
+                </div>
+            </div>
+
+            <!-- Three Month Layout -->
+            <div class="calendar-container">
+                <div class="month-section prev" id="prevMonth">
+                    <div class="month-calendar" id="prevCalendar"></div>
+                </div>
+
+                <div class="month-section current" id="currentMonthSection">
+                    <div class="month-calendar" id="currentCalendar"></div>
+                </div>
+
+                <div class="month-section next" id="nextMonth">
+                    <div class="month-calendar" id="nextCalendar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="current-datetime" id="currentDateTime">
+                Friday 27 September 2024 13:45:32 - New York, NY
+            </div>
+
+            <div class="time-controls">
+                <div class="start-time-selector">
+                    <label>Start day at: </label>
+                    <select id="startTimeSelect">
+                        <option value="0">12:00 AM</option>
+                        <option value="1">1:00 AM</option>
+                        <option value="2">2:00 AM</option>
+                        <option value="3">3:00 AM</option>
+                        <option value="4">4:00 AM</option>
+                        <option value="5">5:00 AM</option>
+                        <option value="6" selected>6:00 AM</option>
+                        <option value="7">7:00 AM</option>
+                        <option value="8">8:00 AM</option>
+                        <option value="9">9:00 AM</option>
+                        <option value="10">10:00 AM</option>
+                        <option value="11">11:00 AM</option>
+                        <option value="12">12:00 PM</option>
+                        <option value="13">1:00 PM</option>
+                        <option value="14">2:00 PM</option>
+                        <option value="15">3:00 PM</option>
+                        <option value="16">4:00 PM</option>
+                        <option value="17">5:00 PM</option>
+                        <option value="18">6:00 PM</option>
+                        <option value="19">7:00 PM</option>
+                        <option value="20">8:00 PM</option>
+                        <option value="21">9:00 PM</option>
+                        <option value="22">10:00 PM</option>
+                        <option value="23">11:00 PM</option>
+                    </select>
+                </div>
+                <div class="time-format-selector">
+                    <label>Time format: </label>
+                    <select id="timeFormatSelect">
+                        <option value="12">12 Hour</option>
+                        <option value="24">24 Hour</option>
+                    </select>
+                </div>
+            </div>
+
+            <table class="timetable" id="timetable">
+                <thead>
+                    <tr>
+                        <th>Start Time</th>
+                        <th>Duration (hrs)</th>
+                        <th>Task</th>
+                        <th>Category</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="timetableBody">
+                    <tr data-row-id="0">
+                        <td class="start-time">06:00</td>
+                        <td><input type="number" class="duration" value="60" min="1"></td>
+                        <td><input type="text" class="task" placeholder="Enter task"></td>
+                        <td><input type="text" class="category" placeholder="Category"></td>
+                        <td>
+                            <button class="add-btn" onclick="addRow(0)">+</button>
+                            <button class="delete-btn" onclick="deleteRow(0)">-</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="controls">
+                <button id="logDayBtn">Log Day</button>
+                <button onclick="clearTimetable()">Clear All</button>
+                <button id="exportExcelBtn">Export Excel</button>
+                <button id="importExcelBtn">Import Excel</button>
+                <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
