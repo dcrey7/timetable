@@ -3,6 +3,7 @@ let rowCounter = 1;
 let currentDate = new Date();
 let selectedDate = new Date(); // The day selected in calendar
 let loggedDays = [];
+let savedTimetables = {}; // Store timetables by date: {"2025-09-27": [timetable_data]}
 let startHour = 6;
 let timeFormat = 12;
 let userLocation = "New York, NY";
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
     generateCalendars();
     loadCustomCategories();
     loadData();
+    loadTimetableForDate(); // Load timetable for current date
     setInterval(updateDateTime, 1000);
 });
 
@@ -100,7 +102,7 @@ function updateDateTime() {
     }
 
     document.getElementById('currentDateTime').textContent =
-        `${dayName} ${day} ${monthName} ${year} ${timeString} - ${userLocation}`;
+        ` Today is ${dayName} ${day} ${monthName} ${year} ${timeString} - ${userLocation}`;
 }
 
 // Year navigation functions
@@ -130,8 +132,12 @@ function toggleMonthSelector() {
 }
 
 function showMonthSelector() {
+    // Close year selector if open
+    hideYearSelector();
+
     const selector = document.getElementById('monthSelector');
     const grid = document.getElementById('monthGrid');
+    const monthElement = document.getElementById('currentMonthDisplay');
 
     grid.innerHTML = '';
     const months = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -157,6 +163,13 @@ function showMonthSelector() {
         grid.appendChild(monthDiv);
     });
 
+    // Position popup centered on the month element
+    const rect = monthElement.getBoundingClientRect();
+    const containerRect = monthElement.closest('.left-panel').getBoundingClientRect();
+
+    selector.style.position = 'absolute';
+    selector.style.left = (rect.left - containerRect.left - 20) + 'px'; // Center it
+    selector.style.top = (rect.bottom - containerRect.top + 5) + 'px';
     selector.style.display = 'block';
 }
 
@@ -175,8 +188,12 @@ function toggleYearSelector() {
 }
 
 function showYearSelector() {
+    // Close month selector if open
+    hideMonthSelector();
+
     const selector = document.getElementById('yearSelectorPopup');
     const select = document.getElementById('yearSelect');
+    const yearElement = document.getElementById('currentYear');
 
     select.innerHTML = '';
     const currentYear = currentDate.getFullYear();
@@ -191,6 +208,13 @@ function showYearSelector() {
         select.appendChild(option);
     }
 
+    // Position popup centered on the year element
+    const rect = yearElement.getBoundingClientRect();
+    const containerRect = yearElement.closest('.left-panel').getBoundingClientRect();
+
+    selector.style.position = 'absolute';
+    selector.style.left = (rect.left - containerRect.left - 50) + 'px'; // Center it
+    selector.style.top = (rect.bottom - containerRect.top + 5) + 'px';
     selector.style.display = 'block';
 }
 
@@ -314,14 +338,14 @@ function createDayElement(day, year, month, isOtherMonth, isToday = false) {
     dayElement.addEventListener('click', () => {
         selectedDate = new Date(year, month, day);
         generateCalendars(); // Refresh to show selection
-        updateTimetableForDate();
+        loadTimetableForDate(); // Load existing or create new
     });
 
     return dayElement;
 }
 
-// Update timetable based on selected date
-function updateTimetableForDate() {
+// Load timetable for selected date or create new 3-row template
+function loadTimetableForDate() {
     // Update the date display to show selected date
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -332,9 +356,27 @@ function updateTimetableForDate() {
     const monthName = months[selectedDate.getMonth()];
     const year = selectedDate.getFullYear();
 
-    // You can load saved timetable for this date here if needed
-    // For now, we'll just show the selected date in the header
-    console.log(`Selected date: ${dayName} ${day} ${monthName} ${year}`);
+    // Update the working date display
+    const selectedDateDisplay = document.getElementById('selectedDateDisplay');
+    if (selectedDateDisplay) {
+        selectedDateDisplay.textContent = `${dayName} ${day} ${monthName} ${year}`;
+    }
+
+    // Get date string for storage
+    const dateStr = formatDateForStorage(year, months.indexOf(monthName), day);
+
+    // Check if this date has saved timetable data
+    if (savedTimetables[dateStr]) {
+        // Load existing timetable
+        loadTimetableData(savedTimetables[dateStr]);
+    } else {
+        // Create fresh 3-row template
+        const tbody = document.getElementById('timetableBody');
+        tbody.innerHTML = '';
+        createDefaultTimetable();
+    }
+
+    console.log(`Loaded timetable for: ${dayName} ${day} ${monthName} ${year}`);
 }
 
 // Timetable functions
@@ -360,17 +402,32 @@ function deleteRow(rowId) {
     const tbody = document.getElementById('timetableBody');
     const rows = tbody.querySelectorAll('tr');
 
-    if (rows.length <= 2) {
-        alert('Cannot delete row. Minimum 2 rows required (start and end).');
+    if (rows.length <= 3) {
+        alert('Cannot delete row. Minimum 3 rows required (Start, Sleep, End).');
         return;
     }
 
     const rowToDelete = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
     if (rowToDelete) {
-        // Don't allow deleting the last row (end row)
         const rowIndex = Array.from(rows).indexOf(rowToDelete);
-        if (rowIndex === rows.length - 1) {
-            alert('Cannot delete the end row.');
+        const task = rowToDelete.querySelector('.task');
+        const taskValue = task ? task.value : '';
+
+        // Don't allow deleting core rows (Start, Sleep, End)
+        const isStartRow = rowIndex === 0 || taskValue === 'Start';
+        const isEndRow = rowIndex === rows.length - 1 || taskValue === 'Day End';
+        const isSleepRow = taskValue === 'Sleep' || (rows.length === 3 && rowIndex === 1);
+
+        if (isStartRow) {
+            alert('Cannot delete the Start row.');
+            return;
+        }
+        if (isSleepRow) {
+            alert('Cannot delete the Sleep row (buffer).');
+            return;
+        }
+        if (isEndRow) {
+            alert('Cannot delete the End row.');
             return;
         }
 
@@ -532,20 +589,40 @@ function updateRowButtons() {
     const tbody = document.getElementById('timetableBody');
     const rows = tbody.querySelectorAll('tr');
 
+    if (rows.length < 3) return; // Need at least 3 rows
+
     rows.forEach((row, index) => {
         const addBtn = row.querySelector('.add-btn');
         const deleteBtn = row.querySelector('.delete-btn');
 
-        if (index === 0) {
-            // First row: only + button (can add but cannot delete)
+        // Identify row type by position and buffer flag
+        const isStartRow = index === 0;
+        const isEndRow = index === rows.length - 1;
+
+        // Check for buffer flag in the row data
+        const rowId = row.getAttribute('data-row-id');
+        const currentDateStr = formatDateForStorage(currentYear, months.indexOf(monthName), selectedDay);
+        let isBufferRow = false;
+
+        if (savedTimetables[currentDateStr]) {
+            const rowData = savedTimetables[currentDateStr].find(data => data.id == rowId);
+            isBufferRow = rowData && rowData.isBuffer;
+        }
+
+        if (isStartRow) {
+            // First row: + only (no -)
             addBtn.style.display = 'inline';
             deleteBtn.style.display = 'none';
-        } else if (index === rows.length - 1) {
-            // Last row: no buttons (it's fixed)
+        } else if (isBufferRow) {
+            // Buffer row: + only (no -)
+            addBtn.style.display = 'inline';
+            deleteBtn.style.display = 'none';
+        } else if (isEndRow) {
+            // Last row: NOTHING (no + or -)
             addBtn.style.display = 'none';
             deleteBtn.style.display = 'none';
         } else {
-            // Middle rows: both + and - buttons
+            // All other rows: both + and -
             addBtn.style.display = 'inline';
             deleteBtn.style.display = 'inline';
         }
@@ -669,26 +746,108 @@ function redistributeTime() {
         currentTimeMinutes += durationMinutes;
     });
 
+    // Apply special styling to rows
+    updateRowStyling();
+
     saveData();
+}
+
+// Function to update row styling (Start/End bold, max duration orange)
+function updateRowStyling() {
+    const tbody = document.getElementById('timetableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (rows.length === 0) return;
+
+    // Find row with maximum duration
+    let maxDuration = 0;
+    let maxDurationRowIndex = -1;
+
+    rows.forEach((row, index) => {
+        const durationInput = row.querySelector('.duration');
+        const taskInput = row.querySelector('.task');
+        const duration = parseFloat(durationInput.value) || 0;
+
+        // Reset previous styling
+        taskInput.style.fontWeight = '';
+        taskInput.style.color = '';
+        durationInput.style.color = '';
+        durationInput.style.fontWeight = '';
+
+        // Check for maximum duration (excluding Day End row)
+        if (duration > maxDuration && taskInput.value !== 'Day End') {
+            maxDuration = duration;
+            maxDurationRowIndex = index;
+        }
+
+        // Style Start and End rows
+        if (taskInput.value === 'Start' || taskInput.value === 'Day End') {
+            taskInput.style.fontWeight = 'bold';
+        }
+    });
+
+    // Style the row with maximum duration
+    if (maxDurationRowIndex >= 0) {
+        const maxRow = rows[maxDurationRowIndex];
+        const maxDurationInput = maxRow.querySelector('.duration');
+        const maxTaskInput = maxRow.querySelector('.task');
+
+        maxDurationInput.style.color = '#ff8c00';
+        maxDurationInput.style.fontWeight = 'bold';
+        maxTaskInput.style.color = '#ff8c00';
+        maxTaskInput.style.fontWeight = 'bold';
+    }
 }
 
 // Helper function to make row non-editable
 function makeRowNonEditable(row, isEndRow) {
     const durationInput = row.querySelector('.duration');
     const taskInput = row.querySelector('.task');
+    const categorySelect = row.querySelector('.category-select');
 
     if (isEndRow) {
-        // End row: make duration and task non-editable
+        // End row: make non-editable but look normal, only bold task
         durationInput.readOnly = true;
-        durationInput.style.backgroundColor = '#f5f5f5';
+        durationInput.style.backgroundColor = 'transparent';
+        durationInput.style.border = 'none';
+        durationInput.style.color = 'inherit';
+        durationInput.style.pointerEvents = 'none';
+
         taskInput.readOnly = true;
-        taskInput.style.backgroundColor = '#f5f5f5';
+        taskInput.style.backgroundColor = 'transparent';
+        taskInput.style.border = 'none';
+        taskInput.style.color = 'inherit';
+        taskInput.style.fontWeight = 'bold';
+        taskInput.style.pointerEvents = 'none';
+
+        if (categorySelect) {
+            categorySelect.disabled = true;
+            categorySelect.style.backgroundColor = 'transparent';
+            categorySelect.style.border = 'none';
+            categorySelect.style.color = 'inherit';
+            categorySelect.style.pointerEvents = 'none';
+        }
     } else {
         // Regular row: make sure it's editable
         durationInput.readOnly = false;
         durationInput.style.backgroundColor = '';
+        durationInput.style.border = '';
+        durationInput.style.color = '';
+        durationInput.style.pointerEvents = '';
+
         taskInput.readOnly = false;
         taskInput.style.backgroundColor = '';
+        taskInput.style.border = '';
+        taskInput.style.color = '';
+        taskInput.style.pointerEvents = '';
+
+        if (categorySelect) {
+            categorySelect.disabled = false;
+            categorySelect.style.backgroundColor = '';
+            categorySelect.style.border = '';
+            categorySelect.style.color = '';
+            categorySelect.style.pointerEvents = '';
+        }
     }
 }
 
@@ -709,8 +868,9 @@ function formatTime(minutes) {
 }
 
 // Clear timetable
-function clearTimetable() {
-    if (confirm('Are you sure you want to clear all entries?')) {
+// Clear only the current day's table
+function clearCurrentTable() {
+    if (confirm('Are you sure you want to clear the current day\'s timetable?')) {
         const tbody = document.getElementById('timetableBody');
         tbody.innerHTML = '';
 
@@ -721,23 +881,61 @@ function clearTimetable() {
     }
 }
 
+// Clear all stored data including all logged days
+function clearAllData() {
+    if (confirm('Are you sure you want to clear ALL timetable data? This will remove all logged days and cannot be undone.')) {
+        // Clear localStorage
+        localStorage.removeItem('savedTimetables');
+        localStorage.removeItem('loggedDays');
+
+        // Reset in-memory variables
+        savedTimetables = {};
+        loggedDays = [];
+
+        // Clear current table
+        const tbody = document.getElementById('timetableBody');
+        tbody.innerHTML = '';
+
+        // Add default timetable
+        createDefaultTimetable();
+        updateRowButtons();
+
+        // Update calendar display to remove green highlighting
+        generateCalendars();
+
+        alert('All timetable data has been cleared.');
+    }
+}
+
 // Create default timetable with exactly 2 rows: start and end
 function createDefaultTimetable() {
     const tbody = document.getElementById('timetableBody');
 
-    // Create start row (23 hours 59 minutes)
+    // Create start row (1 minute)
     const startRow = createTableRow(0);
-    startRow.querySelector('.duration').value = (23 + 59/60).toFixed(2); // 23.98 hours
-    startRow.querySelector('.task').value = 'Add activities here';
+    startRow.querySelector('.duration').value = (1/60).toFixed(2); // 0.02 hours (1 minute)
+    startRow.querySelector('.task').value = 'Start';
     tbody.appendChild(startRow);
 
-    // Create end row (1 minute) - this will be made non-editable by redistributeTime
-    const endRow = createTableRow(1);
+    // Create sleep row (23.98 hours) - this is the buffer row
+    const sleepRow = createTableRow(1);
+    sleepRow.querySelector('.duration').value = (23 + 59/60).toFixed(2); // 23.98 hours
+    sleepRow.querySelector('.task').value = 'Sleep';
+    // Set sleeping category
+    const sleepCategorySelect = sleepRow.querySelector('.category-select');
+    if (sleepCategorySelect) {
+        sleepCategorySelect.value = 'sleeping';
+        updateCategoryDisplay(sleepCategorySelect, 'sleeping');
+    }
+    tbody.appendChild(sleepRow);
+
+    // Create end row (1 minute)
+    const endRow = createTableRow(2);
     endRow.querySelector('.duration').value = (1/60).toFixed(2); // 0.02 hours (1 minute)
     endRow.querySelector('.task').value = 'Day End';
     tbody.appendChild(endRow);
 
-    rowCounter = 2;
+    rowCounter = 3;
     redistributeTime();
     updateRowButtons();
 }
@@ -756,30 +954,33 @@ function logDay() {
                                         selectedDate.getMonth(),
                                         selectedDate.getDate());
 
+    // Save current timetable for this date
+    savedTimetables[dateStr] = getTimetableData();
+
     if (!loggedDays.includes(dateStr)) {
         loggedDays.push(dateStr);
-        saveData();
-        generateCalendars(); // Refresh to show logged day
-
-        // Auto-export to Excel when logging
-        exportToExcel();
-
-        alert('Day logged successfully and exported to Excel!');
-    } else {
-        alert('This day has already been logged');
     }
+
+    saveData();
+    generateCalendars(); // Refresh to show logged day
+
+    // Auto-export to Excel when logging
+    exportToExcel();
+
+    alert('Day logged successfully and exported to Excel!');
 }
 
 // Data persistence
 function saveData() {
     const data = {
-        timetable: getTimetableData(),
+        savedTimetables: savedTimetables,
         loggedDays: loggedDays,
         rowCounter: rowCounter,
         startHour: startHour,
         timeFormat: timeFormat,
         userLocation: userLocation,
-        selectedDate: selectedDate.toISOString()
+        selectedDate: selectedDate.toISOString(),
+        customCategories: customCategories
     };
     localStorage.setItem('timetableData', JSON.stringify(data));
 }
@@ -788,11 +989,15 @@ function loadData() {
     const savedData = localStorage.getItem('timetableData');
     if (savedData) {
         const data = JSON.parse(savedData);
+
+        // Load multi-day data
+        savedTimetables = data.savedTimetables || {};
         loggedDays = data.loggedDays || [];
         rowCounter = data.rowCounter || 1;
         startHour = data.startHour || 6;
         timeFormat = data.timeFormat || 12;
         userLocation = data.userLocation || "New York, NY";
+        customCategories = data.customCategories || [];
 
         if (data.selectedDate) {
             selectedDate = new Date(data.selectedDate);
@@ -802,15 +1007,13 @@ function loadData() {
         document.getElementById('startTimeSelect').value = startHour;
         document.getElementById('timeFormatSelect').value = timeFormat;
 
-        if (data.timetable && data.timetable.length > 0) {
-            loadTimetableData(data.timetable);
-        } else {
-            createDefaultTimetable();
-        }
-
+        // Don't automatically load timetable here - loadTimetableForDate will handle it
         updateRowButtons();
     } else {
-        createDefaultTimetable();
+        // Fresh start - no saved data
+        savedTimetables = {};
+        loggedDays = [];
+        customCategories = [];
         updateRowButtons();
     }
 }
@@ -864,11 +1067,8 @@ function formatDateForStorage(year, month, day) {
 
 // Excel Export/Import Functions
 function exportToExcel() {
-    const tbody = document.getElementById('timetableBody');
-    const rows = tbody.querySelectorAll('tr');
-
-    if (rows.length === 0) {
-        alert('No timetable entries to export');
+    if (loggedDays.length === 0) {
+        alert('No logged days to export');
         return;
     }
 
@@ -882,55 +1082,62 @@ function exportToExcel() {
         'End Time',
         'Duration (hrs)',
         'Task',
-        'Category'
+        'Category',
+        'Is Buffer'
     ]);
 
-    // Get current date
-    const dateStr = formatDateForStorage(selectedDate.getFullYear(),
-                                        selectedDate.getMonth(),
-                                        selectedDate.getDate());
+    // Process each logged day
+    loggedDays.forEach(dateStr => {
+        const timetableData = savedTimetables[dateStr];
+        if (!timetableData) return;
 
-    // Process each row
-    let currentTimeMinutes = startHour * 60;
+        // Process each row for this date
+        let currentTimeMinutes = startHour * 60;
 
-    rows.forEach((row, index) => {
-        const durationHours = parseFloat(row.querySelector('.duration').value) || 0;
-        const durationMinutes = durationHours * 60;
-        const task = row.querySelector('.task').value || '';
+        timetableData.forEach((rowData) => {
+            const durationHours = parseFloat(rowData.duration) || 0;
+            const durationMinutes = durationHours * 60;
+            const task = rowData.task || '';
 
-        // Get category
-        const categorySelect = row.querySelector('.category-select');
-        let categoryLabel = '';
-        if (categorySelect && categorySelect.value) {
-            const allCategories = [...presetCategories, ...customCategories];
-            const category = allCategories.find(cat => cat.value === categorySelect.value);
-            categoryLabel = category ? category.label : categorySelect.value;
-        }
+            // Get category label
+            let categoryLabel = '';
+            if (rowData.category) {
+                const allCategories = [...presetCategories, ...customCategories];
+                const category = allCategories.find(cat => cat.value === rowData.category);
+                categoryLabel = category ? category.label : rowData.category;
+            }
 
-        // Calculate end time
-        const endTimeMinutes = currentTimeMinutes + durationMinutes;
+            // Calculate end time
+            const endTimeMinutes = currentTimeMinutes + durationMinutes;
 
-        // Format times
-        const startTimeStr = formatTime(currentTimeMinutes);
-        const endTimeStr = formatTime(endTimeMinutes);
+            // Convert to Excel time format (decimal fraction of a day)
+            const startTimeExcel = (currentTimeMinutes % (24 * 60)) / (24 * 60);
+            const endTimeExcel = (endTimeMinutes % (24 * 60)) / (24 * 60);
 
-        excelData.push([
-            dateStr,
-            startTimeStr,
-            endTimeStr,
-            durationHours.toFixed(2),
-            task,
-            categoryLabel
-        ]);
+            // Convert date to Excel date format
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const excelDate = new Date(year, month - 1, day);
+            const excelDateSerial = (excelDate.getTime() - new Date(1900, 0, 1).getTime()) / (24 * 60 * 60 * 1000) + 2;
 
-        currentTimeMinutes = endTimeMinutes;
+            excelData.push([
+                excelDateSerial,
+                startTimeExcel,
+                endTimeExcel,
+                durationHours.toFixed(2),
+                task,
+                categoryLabel,
+                rowData.isBuffer || false
+            ]);
+
+            currentTimeMinutes = endTimeMinutes;
+        });
     });
 
     // Create workbook and worksheet
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.aoa_to_sheet(excelData);
 
-    // Set column widths
+    // Set column widths and formats
     worksheet['!cols'] = [
         { width: 12 }, // Date
         { width: 12 }, // Start Time
@@ -940,11 +1147,35 @@ function exportToExcel() {
         { width: 15 }  // Category
     ];
 
+    // Apply Excel formatting to date and time columns
+    const range = XLSX.utils.decode_range(worksheet['!ref']);
+    for (let row = 1; row <= range.e.r; row++) { // Skip header row
+        // Date column (A) - Excel date format
+        const dateCell = XLSX.utils.encode_cell({ r: row, c: 0 });
+        if (worksheet[dateCell]) {
+            worksheet[dateCell].z = 'yyyy-mm-dd';
+        }
+
+        // Start Time column (B) - Excel time format
+        const startTimeCell = XLSX.utils.encode_cell({ r: row, c: 1 });
+        if (worksheet[startTimeCell]) {
+            worksheet[startTimeCell].z = 'hh:mm';
+        }
+
+        // End Time column (C) - Excel time format
+        const endTimeCell = XLSX.utils.encode_cell({ r: row, c: 2 });
+        if (worksheet[endTimeCell]) {
+            worksheet[endTimeCell].z = 'hh:mm';
+        }
+    }
+
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Timetable');
 
-    // Generate filename
-    const filename = `Timetable_${dateStr}.xlsx`;
+    // Generate filename with current date
+    const today = new Date();
+    const todayStr = formatDateForStorage(today.getFullYear(), today.getMonth(), today.getDate());
+    const filename = `Timetable_All_Days_${todayStr}.xlsx`;
 
     // Save file
     XLSX.writeFile(workbook, filename);
@@ -975,72 +1206,152 @@ function importFromExcel(event) {
                 return;
             }
 
-            // Validate headers
-            const headers = excelData[0];
-            const requiredHeaders = ['Date', 'Start Time', 'End Time', 'Duration (hrs)', 'Task', 'Category'];
+            // Helper function to convert Excel date to our format
+            function parseExcelDate(value) {
+                if (typeof value === 'number') {
+                    // Excel date serial number
+                    const excelEpoch = new Date(1900, 0, 1);
+                    const date = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
+                    return formatDateForStorage(date.getFullYear(), date.getMonth(), date.getDate());
+                } else if (typeof value === 'string') {
+                    // Try to parse string date
+                    if (value.includes('-') && value.length >= 8) {
+                        // Format like "2024-09-27"
+                        return value;
+                    }
+                    // Try to parse other date formats
+                    const date = new Date(value);
+                    if (!isNaN(date.getTime())) {
+                        return formatDateForStorage(date.getFullYear(), date.getMonth(), date.getDate());
+                    }
+                }
+                return null;
+            }
 
-            // Clear current timetable
-            const tbody = document.getElementById('timetableBody');
-            tbody.innerHTML = '';
+            // Group data by date
+            const dataByDate = {};
+            const importedDates = new Set();
 
-            // Import data rows (skip header)
+            // Process data rows (skip header)
             const dataRows = excelData.slice(1);
-            let rowCounter = 0;
 
-            dataRows.forEach((rowData, index) => {
-                if (rowData.length >= 4) { // Minimum required columns
-                    const row = createTableRow(rowCounter++);
+            dataRows.forEach((rowData) => {
+                if (rowData.length >= 7) { // Need all columns: Date, Start, End, Duration, Task, Category, Is Buffer
+                    const dateStr = parseExcelDate(rowData[0]);
+                    if (dateStr) {
+                        if (!dataByDate[dateStr]) {
+                            dataByDate[dateStr] = [];
+                        }
 
-                    // Set duration
-                    const duration = parseFloat(rowData[3]) || 0;
-                    row.querySelector('.duration').value = duration.toFixed(2);
+                        // Get category value from label
+                        const categoryLabel = rowData[5] || '';
+                        let categoryValue = '';
+                        if (categoryLabel) {
+                            const allCategories = [...presetCategories, ...customCategories];
+                            const category = allCategories.find(cat =>
+                                cat.label === categoryLabel ||
+                                cat.label.toLowerCase().includes(categoryLabel.toLowerCase())
+                            );
 
-                    // Set task
-                    const task = rowData[4] || '';
-                    row.querySelector('.task').value = task;
-
-                    // Set category
-                    const categoryLabel = rowData[5] || '';
-                    const categorySelect = row.querySelector('.category-select');
-
-                    if (categoryLabel && categorySelect) {
-                        // Find matching category by label
-                        const allCategories = [...presetCategories, ...customCategories];
-                        const category = allCategories.find(cat =>
-                            cat.label === categoryLabel ||
-                            cat.label.toLowerCase().includes(categoryLabel.toLowerCase())
-                        );
-
-                        if (category) {
-                            categorySelect.value = category.value;
-                            updateCategoryDisplay(categorySelect, category.value);
-                        } else {
-                            // Add as custom category if not found
-                            const customValue = categoryLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
-                            if (customValue && !customCategories.some(cat => cat.value === customValue)) {
-                                customCategories.push({
-                                    value: customValue,
-                                    label: categoryLabel,
-                                    color: "#666666"
-                                });
-                                saveCustomCategories();
-                                populateCategories(categorySelect);
-                                categorySelect.value = customValue;
-                                updateCategoryDisplay(categorySelect, customValue);
+                            if (category) {
+                                categoryValue = category.value;
+                            } else {
+                                // Add as custom category if new
+                                const customValue = categoryLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                if (customValue && !customCategories.some(cat => cat.value === customValue)) {
+                                    customCategories.push({
+                                        value: customValue,
+                                        label: categoryLabel,
+                                        color: "#666666"
+                                    });
+                                    saveCustomCategories();
+                                }
+                                categoryValue = customValue;
                             }
                         }
-                    }
 
-                    tbody.appendChild(row);
+                        // Get buffer status from Excel
+                        const isBuffer = rowData[6] === true || rowData[6] === 'true' || rowData[6] === 'TRUE';
+
+                        dataByDate[dateStr].push({
+                            duration: (parseFloat(rowData[3]) || 0).toFixed(2),
+                            task: rowData[4] || '',
+                            category: categoryValue,
+                            isBuffer: isBuffer
+                        });
+
+                        importedDates.add(dateStr);
+                    }
                 }
             });
 
-            // Update the timetable
-            redistributeTime();
-            updateRowButtons();
-            saveData();
+            // Process ALL dates from Excel and save them
+            Object.keys(dataByDate).forEach(dateStr => {
+                const importedRows = dataByDate[dateStr];
 
-            alert(`Successfully imported ${dataRows.length} timetable entries`);
+                // Filter out ONLY Start and Day End rows - keep everything else AS-IS from Excel
+                const activityRows = importedRows.filter(row =>
+                    row.task !== 'Start' && row.task !== 'Day End'
+                );
+
+                // Build timetable structure preserving Excel format exactly
+                const properTimetable = [];
+                let currentRowId = 0;
+
+                // 1. Always start with "Start" row (1 minute)
+                properTimetable.push({
+                    id: currentRowId++,
+                    duration: (1/60).toFixed(2), // 0.02 hours (1 minute)
+                    task: 'Start',
+                    category: '',
+                    isBuffer: false
+                });
+
+                // 2. Add ALL rows from Excel (including buffers) with proper IDs and buffer flags
+                activityRows.forEach(row => {
+                    properTimetable.push({
+                        id: currentRowId++,
+                        duration: row.duration,
+                        task: row.task,
+                        category: row.category,
+                        isBuffer: row.isBuffer || false
+                    });
+                });
+
+                // 3. Always end with "Day End" row (1 minute)
+                properTimetable.push({
+                    id: currentRowId++,
+                    duration: (1/60).toFixed(2), // 0.02 hours (1 minute)
+                    task: 'Day End',
+                    category: '',
+                    isBuffer: false
+                });
+
+                // Save the properly structured timetable
+                savedTimetables[dateStr] = properTimetable;
+
+                // Add to loggedDays if not already there
+                if (!loggedDays.includes(dateStr)) {
+                    loggedDays.push(dateStr);
+                }
+            });
+
+            // Load current selected date's data if it was imported
+            const currentDateStr = formatDateForStorage(currentYear, months.indexOf(monthName), selectedDay);
+            if (savedTimetables[currentDateStr]) {
+                const tbody = document.getElementById('timetableBody');
+                tbody.innerHTML = '';
+                loadTimetableData(savedTimetables[currentDateStr]);
+            }
+
+            alert(`Successfully imported ${Object.keys(dataByDate).length} days of timetable data. Calendar dates have been marked green.`);
+
+            // Save to localStorage
+            localStorage.setItem('savedTimetables', JSON.stringify(savedTimetables));
+            localStorage.setItem('loggedDays', JSON.stringify(loggedDays));
+
+            // Refresh calendar to show green dates
+            generateCalendars();
 
         } catch (error) {
             console.error('Error importing Excel file:', error);

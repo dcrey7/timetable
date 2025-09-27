@@ -60,6 +60,9 @@
             <div class="current-datetime" id="currentDateTime">
                 Friday 27 September 2024 13:45:32 - New York, NY
             </div>
+            <div class="working-on-date" id="workingOnDate">
+                Now working on: <span id="selectedDateDisplay">Friday 27 September 2024</span>
+            </div>
 
             <div class="time-controls">
                 <div class="start-time-selector">
@@ -111,22 +114,14 @@
                     </tr>
                 </thead>
                 <tbody id="timetableBody">
-                    <tr data-row-id="0">
-                        <td class="start-time">06:00</td>
-                        <td><input type="number" class="duration" value="60" min="1"></td>
-                        <td><input type="text" class="task" placeholder="Enter task"></td>
-                        <td><input type="text" class="category" placeholder="Category"></td>
-                        <td>
-                            <button class="add-btn" onclick="addRow(0)">+</button>
-                            <button class="delete-btn" onclick="deleteRow(0)">-</button>
-                        </td>
-                    </tr>
+                    <!-- Rows will be created dynamically by JavaScript -->
                 </tbody>
             </table>
 
             <div class="controls">
                 <button id="logDayBtn">Log Day</button>
-                <button onclick="clearTimetable()">Clear All</button>
+                <button onclick="clearCurrentTable()">Clear Table</button>
+                <button onclick="clearAllData()">Clear All</button>
                 <button id="exportExcelBtn">Export Excel</button>
                 <button id="importExcelBtn">Import Excel</button>
                 <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display: none;">
