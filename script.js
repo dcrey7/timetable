@@ -2160,10 +2160,13 @@ function exportToExcel() {
         ['Date', 'Start Time', 'End Time', 'Duration (hrs)', 'Task', 'Category', 'Comment']
     ];
 
-    console.log('Exporting logged days:', loggedDays);
+    // Sort logged days from oldest to newest
+    const sortedLoggedDays = [...loggedDays].sort((a, b) => a.localeCompare(b));
+
+    console.log('Exporting logged days (sorted):', sortedLoggedDays);
     console.log('Saved timetables:', savedTimetables);
 
-    loggedDays.forEach(dateStr => {
+    sortedLoggedDays.forEach(dateStr => {
         const savedData = savedTimetables[dateStr];
         if (!savedData) {
             console.log('No data for date:', dateStr);
@@ -2204,8 +2207,11 @@ function exportToExcel() {
             const endTimeExcel = (endTimeMinutes % (24 * 60)) / (24 * 60);
 
             const [year, month, day] = dateStr.split('-').map(Number);
-            const excelDate = new Date(year, month - 1, day);
-            const excelDateSerial = (excelDate.getTime() - new Date(1900, 0, 1).getTime()) / (24 * 60 * 60 * 1000) + 2;
+            // Excel date serial: days since Dec 30, 1899 (Excel's epoch with leap year bug)
+            // Use UTC to avoid timezone issues
+            const excelDate = Date.UTC(year, month - 1, day);
+            const excelEpoch = Date.UTC(1899, 11, 30); // Dec 30, 1899
+            const excelDateSerial = Math.round((excelDate - excelEpoch) / (24 * 60 * 60 * 1000));
 
             timetableExcelData.push([
                 excelDateSerial,
@@ -2242,9 +2248,9 @@ function exportToExcel() {
 
     XLSX.utils.book_append_sheet(workbook, timetableSheet, 'Timetable');
 
-    // Sheet 2: Diary (always created)
+    // Sheet 2: Diary (always created) - sorted by date oldest to newest
     const diaryData = [['Date', 'Entry']];
-    Object.keys(appState.savedData).forEach(dateStr => {
+    Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
         if (appState.savedData[dateStr]?.diary) {
             diaryData.push([dateStr, appState.savedData[dateStr].diary]);
         }
@@ -2253,9 +2259,9 @@ function exportToExcel() {
     diarySheet['!cols'] = [{ width: 12 }, { width: 80 }];
     XLSX.utils.book_append_sheet(workbook, diarySheet, 'Diary');
 
-    // Sheet 3: Calories (always created)
+    // Sheet 3: Calories (always created) - sorted by date oldest to newest
     const caloriesData = [['Date', 'Food Item', 'Type', 'Class', 'Calories (kcal)', 'Comment']];
-    Object.keys(appState.savedData).forEach(dateStr => {
+    Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
         const foods = appState.savedData[dateStr]?.calories;
         // Handle new array format (multiple food items)
         if (Array.isArray(foods)) {
@@ -2288,9 +2294,9 @@ function exportToExcel() {
     caloriesSheet['!cols'] = [{ width: 12 }, { width: 25 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 30 }];
     XLSX.utils.book_append_sheet(workbook, caloriesSheet, 'Calories');
 
-    // Sheet 4: Fitness (always created) - with Steps and Distance
+    // Sheet 4: Fitness (always created) - with Steps and Distance - sorted by date oldest to newest
     const fitnessData = [['Date', 'Exercise', 'Sets', 'Reps', 'Weight (kg)', 'Body Wt (kg)', 'Steps', 'Distance (km)', 'Burnt (kcal)', 'Comment']];
-    Object.keys(appState.savedData).forEach(dateStr => {
+    Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
         const exercises = appState.savedData[dateStr]?.fitness || [];
         exercises.forEach(ex => {
             if (ex.exercise || ex.sets || ex.reps || ex.caloriesBurnt || ex.steps || ex.distance) {
@@ -2335,9 +2341,12 @@ function importFromExcel(event) {
             // Helper function for date parsing
             function parseExcelDate(value) {
                 if (typeof value === 'number') {
-                    const excelEpoch = new Date(1900, 0, 1);
-                    const date = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
-                    return formatDateForStorage(date.getFullYear(), date.getMonth(), date.getDate());
+                    // Excel date serial: days since Dec 30, 1899 (Excel's epoch with leap year bug)
+                    // Use UTC to avoid timezone issues
+                    const excelEpoch = Date.UTC(1899, 11, 30); // Dec 30, 1899
+                    const dateMs = excelEpoch + Math.round(value) * 24 * 60 * 60 * 1000;
+                    const date = new Date(dateMs);
+                    return formatDateForStorage(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
                 } else if (typeof value === 'string') {
                     if (value.includes('-') && value.length >= 8) return value;
                     const date = new Date(value);
