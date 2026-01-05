@@ -19,3 +19,6 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# Docs folder
+docs/
