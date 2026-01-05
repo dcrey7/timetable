@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# LibreOffice lock files
+.~lock.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/

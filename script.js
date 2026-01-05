@@ -1,36 +1,398 @@
-// Global variables
+// =============================================================================
+// PRODUCTIVITY APP - Timetable, Diary, Calories, Fitness Tracker
+// =============================================================================
+
+// =============================================================================
+// CONFIGURATION & CONSTANTS
+// =============================================================================
+const CONFIG = {
+    STORAGE_KEY: 'productivityAppData',
+    MIN_DURATION: 0.01,          // 36 seconds minimum
+    FIXED_ROW_DURATION: 1/60,    // 1 minute for start/end rows
+    DEFAULT_START_HOUR: 6,
+    DEFAULT_TIME_FORMAT: 12,
+    DEFAULT_LOCATION: "New York, NY"
+};
+
+
+const PRESET_CATEGORIES = [
+    { value: "sleeping", label: "Sleeping", color: "#4A90E2" },
+    { value: "eating", label: "Eating", color: "#F5A623" },
+    { value: "working", label: "Working", color: "#D0021B" },
+    { value: "chilling", label: "Chilling", color: "#7ED321" },
+    { value: "exercise", label: "Exercise", color: "#BD10E0" },
+    { value: "learning", label: "Learning", color: "#50E3C2" }
+];
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// =============================================================================
+// GLOBAL STATE
+// =============================================================================
+let appState = {
+    rowCounter: 1,
+    currentDate: new Date(),
+    selectedDate: new Date(),
+    loggedDays: [],
+    savedData: {},           // Unified storage: { "2025-01-05": { timetable: [], diary: "", calories: {}, fitness: [] } }
+    startHour: CONFIG.DEFAULT_START_HOUR,
+    timeFormat: CONFIG.DEFAULT_TIME_FORMAT,
+    userLocation: CONFIG.DEFAULT_LOCATION,
+    customCategories: [],
+    activeTab: 'timetable',
+    calendarView: 'year'     // 'year' or 'month' - starts with year view (Apple Calendar style)
+};
+
+// Legacy support - keep these for backward compatibility during migration
+let savedTimetables = {};
+let loggedDays = [];
+let customCategories = [];
 let rowCounter = 1;
 let currentDate = new Date();
-let selectedDate = new Date(); // The day selected in calendar
-let loggedDays = [];
-let savedTimetables = {}; // Store timetables by date: {"2025-09-27": [timetable_data]}
-let startHour = 6;
-let timeFormat = 12;
-let userLocation = "New York, NY";
+let selectedDate = new Date();
+let startHour = CONFIG.DEFAULT_START_HOUR;
+let timeFormat = CONFIG.DEFAULT_TIME_FORMAT;
+let userLocation = CONFIG.DEFAULT_LOCATION;
+let userCoords = null; // { lat, lon } for weather API
+let currentWeather = null; // { temp, description, icon }
 
-// Category system
-const presetCategories = [
-    { value: "sleeping", label: "😴 Sleeping", color: "#4A90E2" },
-    { value: "eating", label: "🍽️ Eating", color: "#F5A623" },
-    { value: "working", label: "💼 Working", color: "#D0021B" },
-    { value: "chilling", label: "😎 Chilling", color: "#7ED321" },
-    { value: "exercise", label: "🏃 Exercise", color: "#BD10E0" },
-    { value: "learning", label: "📚 Learning", color: "#50E3C2" }
-];
-let customCategories = [];
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
 
-// Initialize the app
+// Format time from minutes to display string
+function formatTime(minutes) {
+    const roundedMinutes = Math.round(minutes);
+    const hours = Math.floor(roundedMinutes / 60) % 24;
+    const mins = roundedMinutes % 60;
+
+    if (timeFormat === 12) {
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        return `${displayHours}:${mins.toString().padStart(2, '0')} ${period}`;
+    } else {
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+}
+
+// Format date for storage key
+function formatDateForStorage(year, month, day) {
+    return `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+}
+
+// Get current date string
+function getCurrentDateStr() {
+    return formatDateForStorage(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+}
+
+// =============================================================================
+// ROW TYPE IDENTIFICATION (Simplified)
+// =============================================================================
+
+// New simplified system:
+// - Last row is always the auto-fill "Sleep" row (can't be deleted)
+// - All other rows are activities (can be added/deleted freely)
+// - No more Start/End fixed rows
+
+function getRowType(row, rowIndex, totalRows) {
+    // Last row is always the auto-fill sleep row
+    if (rowIndex === totalRows - 1) return 'autofill';
+    return 'activity';
+}
+
+function isAutoFillRow(row, rowIndex, totalRows) {
+    return getRowType(row, rowIndex, totalRows) === 'autofill';
+}
+
+function isActivityRow(row, rowIndex, totalRows) {
+    return getRowType(row, rowIndex, totalRows) === 'activity';
+}
+
+function findAutoFillRow(rows) {
+    // Last row is always the auto-fill row
+    return rows[rows.length - 1];
+}
+
+// =============================================================================
+// DURATION VALIDATION (Simplified)
+// =============================================================================
+
+// Calculate total activity duration (excluding auto-fill row)
+function getTotalActivityDuration() {
+    const tbody = document.getElementById('timetableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    let total = 0;
+
+    rows.forEach((row, index) => {
+        // Skip the last row (auto-fill)
+        if (index < rows.length - 1) {
+            total += parseFloat(row.querySelector('.duration')?.value) || 0;
+        }
+    });
+
+    return total;
+}
+
+// Update the footer with total and status
+function updateTimetableFooter() {
+    const total = getTotalActivityDuration();
+    const remaining = 24 - total;
+
+    const totalEl = document.getElementById('totalDuration');
+    const statusEl = document.getElementById('durationStatus');
+
+    if (totalEl) {
+        totalEl.innerHTML = `<strong>${total.toFixed(1)} hrs</strong>`;
+    }
+
+    if (statusEl) {
+        if (total > 24) {
+            statusEl.innerHTML = `<span style="color: #ff4b4b; font-weight: 600;">Over by ${(total - 24).toFixed(1)} hrs - please reduce activities</span>`;
+            statusEl.style.color = '#ff4b4b';
+        } else if (remaining > 0) {
+            statusEl.innerHTML = `<span style="color: #58cc02; font-weight: 600;">${remaining.toFixed(1)} hrs auto-filled as Sleep</span>`;
+        } else {
+            statusEl.innerHTML = `<span style="color: #58cc02; font-weight: 600;">Day fully scheduled</span>`;
+        }
+    }
+}
+
+// =============================================================================
+// INITIALIZATION
+// =============================================================================
+
 document.addEventListener('DOMContentLoaded', function() {
+    loadDarkModePreference();
     updateDateTime();
     setupEventListeners();
+    setupTabListeners();
     generateCalendars();
     loadCustomCategories();
     loadData();
-    loadTimetableForDate(); // Load timetable for current date
+    loadTimetableForDate();
+    loadAllTabsForDate();
+    getUserLocation();
+    initializeQuotes();
+    updateWorkingDateColor();
     setInterval(updateDateTime, 1000);
 });
 
-// Setup event listeners
+// =============================================================================
+// GEOLOCATION
+// =============================================================================
+
+function getUserLocation() {
+    // Try to load saved location first
+    const savedLocation = localStorage.getItem('userLocation');
+    if (savedLocation) {
+        userLocation = savedLocation;
+        updateLocationDisplay();
+    }
+
+    // Try to load saved coordinates for weather
+    const savedCoords = localStorage.getItem('userCoords');
+    if (savedCoords) {
+        userCoords = JSON.parse(savedCoords);
+        fetchWeather(userCoords.lat, userCoords.lon);
+    }
+
+    // Request geolocation if available
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                // Got coordinates, now reverse geocode to get city name
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+
+                // Save coordinates for weather
+                userCoords = { lat, lon };
+                localStorage.setItem('userCoords', JSON.stringify(userCoords));
+
+                reverseGeocode(lat, lon);
+                fetchWeather(lat, lon);
+            },
+            (error) => {
+                console.log('Geolocation error:', error.message);
+                // Keep default or saved location
+            },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
+        );
+    }
+}
+
+function reverseGeocode(lat, lon) {
+    // Use OpenStreetMap's Nominatim API (free, no API key needed)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`;
+
+    fetch(url, {
+        headers: { 'User-Agent': 'ProductivityTracker/1.0' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.address) {
+            const city = data.address.city || data.address.town || data.address.village || data.address.county || '';
+            const state = data.address.state || '';
+            const country = data.address.country_code?.toUpperCase() || '';
+
+            if (city) {
+                // Format: "City, State" or "City, Country"
+                if (state && country === 'US') {
+                    userLocation = `${city}, ${state}`;
+                } else if (state) {
+                    userLocation = `${city}, ${state}`;
+                } else {
+                    userLocation = city;
+                }
+
+                localStorage.setItem('userLocation', userLocation);
+                updateLocationDisplay();
+            }
+        }
+    })
+    .catch(error => {
+        console.log('Reverse geocode error:', error);
+    });
+}
+
+function updateLocationDisplay() {
+    const locationEl = document.getElementById('headerLocation');
+    if (locationEl) {
+        let displayText = userLocation;
+        if (currentWeather) {
+            displayText += ` | ${currentWeather.temp}°C ${currentWeather.icon}`;
+        }
+        locationEl.textContent = displayText;
+    }
+}
+
+// Fetch weather using Open-Meteo API (free, no API key required)
+function fetchWeather(lat, lon) {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.current) {
+                const temp = Math.round(data.current.temperature_2m);
+                const weatherCode = data.current.weather_code;
+                const icon = getWeatherIcon(weatherCode);
+                const description = getWeatherDescription(weatherCode);
+
+                currentWeather = { temp, icon, description };
+                updateLocationDisplay();
+            }
+        })
+        .catch(error => {
+            console.log('Weather fetch error:', error);
+        });
+}
+
+// Get weather icon based on WMO weather code
+function getWeatherIcon(code) {
+    // WMO Weather interpretation codes
+    if (code === 0) return '☀️';           // Clear sky
+    if (code === 1) return '🌤️';           // Mainly clear
+    if (code === 2) return '⛅';            // Partly cloudy
+    if (code === 3) return '☁️';           // Overcast
+    if (code >= 45 && code <= 48) return '🌫️';  // Fog
+    if (code >= 51 && code <= 55) return '🌧️';  // Drizzle
+    if (code >= 56 && code <= 57) return '🌨️';  // Freezing drizzle
+    if (code >= 61 && code <= 65) return '🌧️';  // Rain
+    if (code >= 66 && code <= 67) return '🌨️';  // Freezing rain
+    if (code >= 71 && code <= 77) return '❄️';  // Snow
+    if (code >= 80 && code <= 82) return '🌦️';  // Rain showers
+    if (code >= 85 && code <= 86) return '🌨️';  // Snow showers
+    if (code >= 95 && code <= 99) return '⛈️';  // Thunderstorm
+    return '🌡️';
+}
+
+// Get weather description based on WMO weather code
+function getWeatherDescription(code) {
+    if (code === 0) return 'Clear';
+    if (code === 1) return 'Mainly clear';
+    if (code === 2) return 'Partly cloudy';
+    if (code === 3) return 'Overcast';
+    if (code >= 45 && code <= 48) return 'Foggy';
+    if (code >= 51 && code <= 55) return 'Drizzle';
+    if (code >= 56 && code <= 57) return 'Freezing drizzle';
+    if (code >= 61 && code <= 65) return 'Rain';
+    if (code >= 66 && code <= 67) return 'Freezing rain';
+    if (code >= 71 && code <= 77) return 'Snow';
+    if (code >= 80 && code <= 82) return 'Rain showers';
+    if (code >= 85 && code <= 86) return 'Snow showers';
+    if (code >= 95 && code <= 99) return 'Thunderstorm';
+    return 'Unknown';
+}
+
+// =============================================================================
+// LIVE QUOTES SYSTEM
+// =============================================================================
+
+// Display quote in the header
+function displayQuote(quote) {
+    const quoteEl = document.getElementById('headerQuote');
+    if (quoteEl && quote) {
+        quoteEl.innerHTML = `"${quote.text}" — ${quote.author}`;
+    }
+}
+
+// Initialize quote on page load
+function initializeQuotes() {
+    fetchNewQuote();
+}
+
+// Fetch a new random quote for the header
+function fetchNewQuote() {
+    const quoteEl = document.getElementById('headerQuote');
+    if (quoteEl) {
+        quoteEl.textContent = 'Loading inspiration...';
+    }
+
+    // Use type.fit API (1600+ quotes, reliable)
+    fetch('https://type.fit/api/quotes')
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                // Get a truly random quote using current timestamp
+                const randomIndex = Math.floor(Math.random() * data.length);
+                const quoteData = data[randomIndex];
+                displayQuote({
+                    text: quoteData.text,
+                    author: quoteData.author ? quoteData.author.replace(', type.fit', '') : 'Unknown'
+                });
+            }
+        })
+        .catch(error => {
+            console.log('Quote API error:', error);
+            // Fallback quotes array
+            const fallbackQuotes = [
+                { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+                { text: "Success is not final, failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill" },
+                { text: "Believe you can and you're halfway there.", author: "Theodore Roosevelt" },
+                { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+                { text: "It does not matter how slowly you go as long as you do not stop.", author: "Confucius" },
+                { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" },
+                { text: "The best time to plant a tree was 20 years ago. The second best time is now.", author: "Chinese Proverb" },
+                { text: "Your limitation—it's only your imagination.", author: "Unknown" },
+                { text: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
+                { text: "Great things never come from comfort zones.", author: "Unknown" },
+                { text: "Dream it. Wish it. Do it.", author: "Unknown" },
+                { text: "Success doesn't just find you. You have to go out and get it.", author: "Unknown" },
+                { text: "The harder you work for something, the greater you'll feel when you achieve it.", author: "Unknown" },
+                { text: "Don't stop when you're tired. Stop when you're done.", author: "Unknown" },
+                { text: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" }
+            ];
+            const randomIndex = Math.floor(Math.random() * fallbackQuotes.length);
+            displayQuote(fallbackQuotes[randomIndex]);
+        });
+}
+
+// =============================================================================
+// EVENT LISTENERS SETUP
+// =============================================================================
+
 function setupEventListeners() {
     // Year navigation
     document.getElementById('prevYear').addEventListener('click', () => changeYear(-1));
@@ -74,46 +436,181 @@ function setupEventListeners() {
     });
     document.getElementById('excelFileInput').addEventListener('change', importFromExcel);
 
-    // Duration inputs
+    // Duration inputs (global listener)
     document.addEventListener('input', function(e) {
         if (e.target.classList.contains('duration')) {
+            validateAndUpdateDuration(e.target);
             redistributeTime();
         }
     });
+
+    // Setup new tab-specific listeners
+    setupDiaryListeners();
+    setupCaloriesListeners();
+    setupFitnessListeners();
+
+    // Dark mode toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('click', toggleDarkMode);
+    }
+
+    // Settings button
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', openSettings);
+    }
 }
 
-// Update date and time display
+// =============================================================================
+// DARK MODE
+// =============================================================================
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+
+    // Toggle icons
+    const sunIcon = document.querySelector('.icon-sun');
+    const moonIcon = document.querySelector('.icon-moon');
+    if (sunIcon && moonIcon) {
+        sunIcon.style.display = isDark ? 'none' : 'inline';
+        moonIcon.style.display = isDark ? 'inline' : 'none';
+    }
+
+    // Save preference
+    localStorage.setItem('darkMode', isDark ? 'true' : 'false');
+}
+
+function loadDarkModePreference() {
+    const savedPref = localStorage.getItem('darkMode');
+    if (savedPref === 'true') {
+        document.body.classList.add('dark-mode');
+        const sunIcon = document.querySelector('.icon-sun');
+        const moonIcon = document.querySelector('.icon-moon');
+        if (sunIcon && moonIcon) {
+            sunIcon.style.display = 'none';
+            moonIcon.style.display = 'inline';
+        }
+    }
+}
+
+// =============================================================================
+// SETTINGS
+// =============================================================================
+
+function openSettings() {
+    alert('Settings panel coming soon!\n\nFeatures planned:\n- Location settings\n- Default categories\n- Data export/backup\n- Theme customization');
+}
+
+// =============================================================================
+// TAB SYSTEM
+// =============================================================================
+
+function setupTabListeners() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+}
+
+function switchTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    // Remove active from all buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Show selected tab
+    const tabContent = document.getElementById(`${tabName}Tab`);
+    if (tabContent) {
+        tabContent.classList.add('active');
+    }
+
+    // Activate button
+    const tabBtn = document.querySelector(`[data-tab="${tabName}"]`);
+    if (tabBtn) {
+        tabBtn.classList.add('active');
+    }
+
+    appState.activeTab = tabName;
+}
+
+// =============================================================================
+// DATE & TIME DISPLAY
+// =============================================================================
+
 function updateDateTime() {
     const now = new Date();
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-
-    const dayName = days[now.getDay()];
+    const dayName = DAYS[now.getDay()];
     const day = now.getDate();
-    const monthName = months[now.getMonth()];
+    const monthName = MONTHS[now.getMonth()];
     const year = now.getFullYear();
 
     let timeString;
     if (timeFormat === 12) {
-        timeString = now.toLocaleTimeString('en-US', { hour12: true });
+        const hours = now.getHours();
+        const mins = now.getMinutes().toString().padStart(2, '0');
+        const secs = now.getSeconds().toString().padStart(2, '0');
+        const period = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        timeString = `${displayHours}:${mins}:${secs} ${period}`;
     } else {
-        timeString = now.toTimeString().slice(0, 8);
+        const hours = now.getHours().toString().padStart(2, '0');
+        const mins = now.getMinutes().toString().padStart(2, '0');
+        const secs = now.getSeconds().toString().padStart(2, '0');
+        timeString = `${hours}:${mins}:${secs}`;
     }
 
-    document.getElementById('currentDateTime').textContent =
-        ` Today is ${dayName} ${day} ${monthName} ${year} ${timeString} - ${userLocation}`;
+    // Update header datetime (date, time separated by comma)
+    const dateTimeEl = document.getElementById('currentDateTime');
+    if (dateTimeEl) {
+        dateTimeEl.textContent = `${dayName} ${day} ${monthName} ${year}, ${timeString}`;
+    }
+
+    // Location is updated by updateLocationDisplay() when weather loads
 }
 
-// Year navigation functions
+// Update working date color based on whether it matches today
+function updateWorkingDateColor() {
+    const workingDateSpan = document.querySelector('.header-working span');
+    if (!workingDateSpan) return;
+
+    const today = new Date();
+
+    // Compare just the date parts (year, month, day) - ignore time
+    const todayStr = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+    const selectedStr = `${selectedDate.getFullYear()}-${selectedDate.getMonth()}-${selectedDate.getDate()}`;
+
+    const isToday = (todayStr === selectedStr);
+
+    if (isToday) {
+        // Green color for today (working on current day)
+        workingDateSpan.style.color = '#34c759';
+    } else {
+        // Blue color for other days
+        workingDateSpan.style.color = '#1cb0f6';
+    }
+}
+
+// =============================================================================
+// CALENDAR MODULE
+// =============================================================================
+
 function changeYear(direction) {
     currentDate.setFullYear(currentDate.getFullYear() + direction);
-    generateCalendars();
     updateDateDisplay();
+    generateYearView();
+    generateMonthCalendar('prev', -1);
+    generateMonthCalendar('current', 0);
+    generateMonthCalendar('next', 1);
     saveData();
 }
 
-// Month navigation functions
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     generateCalendars();
@@ -121,7 +618,6 @@ function changeMonth(direction) {
     saveData();
 }
 
-// Month selector functions
 function toggleMonthSelector() {
     const selector = document.getElementById('monthSelector');
     if (selector.style.display === 'none') {
@@ -132,7 +628,6 @@ function toggleMonthSelector() {
 }
 
 function showMonthSelector() {
-    // Close year selector if open
     hideYearSelector();
 
     const selector = document.getElementById('monthSelector');
@@ -140,10 +635,8 @@ function showMonthSelector() {
     const monthElement = document.getElementById('currentMonthDisplay');
 
     grid.innerHTML = '';
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
 
-    months.forEach((month, index) => {
+    MONTHS.forEach((month, index) => {
         const monthDiv = document.createElement('div');
         monthDiv.className = 'month-option';
         monthDiv.textContent = month.substring(0, 3);
@@ -163,12 +656,11 @@ function showMonthSelector() {
         grid.appendChild(monthDiv);
     });
 
-    // Position popup centered on the month element
     const rect = monthElement.getBoundingClientRect();
     const containerRect = monthElement.closest('.left-panel').getBoundingClientRect();
 
     selector.style.position = 'absolute';
-    selector.style.left = (rect.left - containerRect.left - 20) + 'px'; // Center it
+    selector.style.left = (rect.left - containerRect.left - 20) + 'px';
     selector.style.top = (rect.bottom - containerRect.top + 5) + 'px';
     selector.style.display = 'block';
 }
@@ -177,7 +669,6 @@ function hideMonthSelector() {
     document.getElementById('monthSelector').style.display = 'none';
 }
 
-// Year selector functions
 function toggleYearSelector() {
     const selector = document.getElementById('yearSelectorPopup');
     if (selector.style.display === 'none') {
@@ -188,12 +679,10 @@ function toggleYearSelector() {
 }
 
 function showYearSelector() {
-    // Close month selector if open
     hideMonthSelector();
 
     const selector = document.getElementById('yearSelectorPopup');
     const select = document.getElementById('yearSelect');
-    const yearElement = document.getElementById('currentYear');
 
     select.innerHTML = '';
     const currentYear = currentDate.getFullYear();
@@ -202,19 +691,10 @@ function showYearSelector() {
         const option = document.createElement('option');
         option.value = year;
         option.textContent = year;
-        if (year === currentYear) {
-            option.selected = true;
-        }
+        if (year === currentYear) option.selected = true;
         select.appendChild(option);
     }
 
-    // Position popup centered on the year element
-    const rect = yearElement.getBoundingClientRect();
-    const containerRect = yearElement.closest('.left-panel').getBoundingClientRect();
-
-    selector.style.position = 'absolute';
-    selector.style.left = (rect.left - containerRect.left - 50) + 'px'; // Center it
-    selector.style.top = (rect.bottom - containerRect.top + 5) + 'px';
     selector.style.display = 'block';
 }
 
@@ -222,30 +702,208 @@ function hideYearSelector() {
     document.getElementById('yearSelectorPopup').style.display = 'none';
 }
 
-// Update date display
 function updateDateDisplay() {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-
     const currentYear = currentDate.getFullYear();
-    const currentMonth = months[currentDate.getMonth()];
+    const currentMonth = MONTHS[currentDate.getMonth()];
 
-    // Update year navigation
-    const yearSpans = document.querySelectorAll('.year-nav span');
-    yearSpans[0].textContent = currentYear - 1;
-    yearSpans[1].textContent = currentYear;
-    yearSpans[2].textContent = currentYear + 1;
+    // Update year display
+    const currentYearEl = document.getElementById('currentYear');
+    if (currentYearEl) {
+        currentYearEl.textContent = currentYear;
+    }
 
-    // Update month display
-    document.getElementById('currentMonthDisplay').textContent = `${currentMonth} ${currentYear}`;
+    // Update month display (if visible)
+    const monthDisplay = document.getElementById('currentMonthDisplay');
+    if (monthDisplay) {
+        monthDisplay.textContent = `${currentMonth} ${currentYear}`;
+    }
 }
 
-// Generate all calendars
 function generateCalendars() {
+    updateDateDisplay();
+
+    // Generate year view (12-month grid)
+    generateYearView();
+
+    // Generate month view (3 months)
+    generateMonthCalendar('prev', -1);
+    generateMonthCalendar('current', 0);
+    generateMonthCalendar('next', 1);
+
+    // Set initial view state
+    updateCalendarViewDisplay();
+}
+
+// =============================================================================
+// YEAR VIEW (Apple Calendar Style)
+// =============================================================================
+
+function generateYearView() {
+    const yearGrid = document.getElementById('yearGrid');
+    if (!yearGrid) return;
+
+    yearGrid.innerHTML = '';
+    const year = currentDate.getFullYear();
+    const today = new Date();
+
+    // Generate 12 mini month cards
+    for (let month = 0; month < 12; month++) {
+        const monthCard = createMiniMonthCard(year, month, today);
+        yearGrid.appendChild(monthCard);
+    }
+}
+
+function createMiniMonthCard(year, month, today) {
+    const card = document.createElement('div');
+    card.className = 'year-month-card';
+
+    // Click to zoom to this month
+    card.addEventListener('click', () => {
+        zoomToMonth(year, month);
+    });
+
+    // Month label
+    const label = document.createElement('div');
+    label.className = 'mini-month-label';
+    label.textContent = MONTHS[month];
+    card.appendChild(label);
+
+    // Mini calendar grid
+    const miniCal = document.createElement('div');
+    miniCal.className = 'mini-calendar';
+
+    // Day headers (S M T W T F S)
+    const dayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    dayHeaders.forEach((day, index) => {
+        const header = document.createElement('div');
+        header.className = 'mini-day';
+        if (index === 0) header.classList.add('sunday');
+        header.textContent = day;
+        header.style.fontWeight = '700';
+        header.style.fontSize = '8px';
+        header.style.color = index === 0 ? '#ff3b30' : '#86868b';
+        miniCal.appendChild(header);
+    });
+
+    // Generate days
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    // Previous month days (faded)
+    for (let i = firstDay - 1; i >= 0; i--) {
+        const day = daysInPrevMonth - i;
+        const dayEl = document.createElement('div');
+        dayEl.className = 'mini-day other-month';
+        dayEl.textContent = day;
+        miniCal.appendChild(dayEl);
+    }
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'mini-day';
+        dayEl.textContent = day;
+
+        // Check if Sunday
+        const dateObj = new Date(year, month, day);
+        if (dateObj.getDay() === 0) {
+            dayEl.classList.add('sunday');
+        }
+
+        // Check if today
+        if (today.getFullYear() === year &&
+            today.getMonth() === month &&
+            today.getDate() === day) {
+            dayEl.style.background = '#007aff';
+            dayEl.style.color = 'white';
+            dayEl.style.borderRadius = '50%';
+            dayEl.style.fontWeight = '700';
+        }
+
+        // Check if logged
+        const dateStr = formatDateForStorage(year, month, day);
+        if (loggedDays.includes(dateStr)) {
+            dayEl.style.background = '#34c759';
+            dayEl.style.color = 'white';
+            dayEl.style.borderRadius = '50%';
+        }
+
+        miniCal.appendChild(dayEl);
+    }
+
+    // Fill remaining cells (next month, faded)
+    const totalCells = miniCal.children.length - 7; // Subtract header row
+    const remainingCells = 35 - totalCells;
+    for (let day = 1; day <= remainingCells && day <= 14; day++) {
+        const dayEl = document.createElement('div');
+        dayEl.className = 'mini-day other-month';
+        dayEl.textContent = day;
+        miniCal.appendChild(dayEl);
+    }
+
+    card.appendChild(miniCal);
+    return card;
+}
+
+function zoomToMonth(year, month) {
+    // Set current date to the clicked month
+    currentDate = new Date(year, month, 1);
+
+    // Switch to month view
+    appState.calendarView = 'month';
+
+    // Regenerate calendars and update display
     updateDateDisplay();
     generateMonthCalendar('prev', -1);
     generateMonthCalendar('current', 0);
     generateMonthCalendar('next', 1);
+    updateCalendarViewDisplay();
+}
+
+function showYearView() {
+    appState.calendarView = 'year';
+    generateYearView();
+    updateCalendarViewDisplay();
+}
+
+function showMonthView() {
+    appState.calendarView = 'month';
+    updateCalendarViewDisplay();
+}
+
+function toggleCalendarView() {
+    if (appState.calendarView === 'year') {
+        appState.calendarView = 'month';
+    } else {
+        appState.calendarView = 'year';
+        generateYearView();
+    }
+    updateCalendarViewDisplay();
+}
+
+function updateCalendarViewDisplay() {
+    const yearView = document.getElementById('calendarYearView');
+    const monthView = document.getElementById('calendarMonthView');
+    const toggleBtn = document.getElementById('yearViewToggle');
+
+    if (!yearView || !monthView) return;
+
+    if (appState.calendarView === 'year') {
+        yearView.classList.remove('hidden');
+        monthView.classList.remove('active');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Month';
+            toggleBtn.classList.add('active');
+        }
+    } else {
+        yearView.classList.add('hidden');
+        monthView.classList.add('active');
+        if (toggleBtn) {
+            toggleBtn.textContent = 'Year';
+            toggleBtn.classList.remove('active');
+        }
+    }
 }
 
 function generateMonthCalendar(type, monthOffset) {
@@ -254,25 +912,41 @@ function generateMonthCalendar(type, monthOffset) {
 
     const year = targetDate.getFullYear();
     const month = targetDate.getMonth();
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
 
-    // Skip title update since we removed month titles
+    // Get the month section container
+    const monthSection = document.getElementById(type === 'current' ? 'currentMonthSection' : `${type}Month`);
 
-    // Generate calendar
-    let calendarElement;
-    if (type === 'current') {
-        calendarElement = document.querySelector('#currentCalendar');
-    } else {
-        calendarElement = document.querySelector(`#${type}Calendar`);
+    // Create or update month header
+    let monthHeader = monthSection.querySelector('.month-header');
+    if (!monthHeader) {
+        monthHeader = document.createElement('div');
+        monthHeader.className = 'month-header';
+        monthSection.insertBefore(monthHeader, monthSection.firstChild);
     }
+
+    // Build header content based on type - using up/down arrows for month nav
+    if (type === 'current') {
+        monthHeader.className = 'month-header with-nav';
+        monthHeader.innerHTML = `
+            <button class="btn-nav" onclick="changeMonth(-1)">&#9650;</button>
+            <span class="month-label">${MONTHS[month]} ${year}</span>
+            <button class="btn-nav" onclick="changeMonth(1)">&#9660;</button>
+        `;
+    } else {
+        monthHeader.className = 'month-header';
+        monthHeader.innerHTML = `<span class="month-label">${MONTHS[month]} ${year}</span>`;
+    }
+
+    // Generate calendar grid
+    let calendarElement = document.querySelector(`#${type}Calendar`);
     calendarElement.innerHTML = '';
 
-    // Add day headers
+    // Add day headers (Sunday highlighted in red)
     const dayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    dayHeaders.forEach(day => {
+    dayHeaders.forEach((day, index) => {
         const dayHeader = document.createElement('div');
         dayHeader.className = 'day-header';
+        if (index === 0) dayHeader.classList.add('sunday'); // Sunday in red
         dayHeader.textContent = day;
         calendarElement.appendChild(dayHeader);
     });
@@ -313,13 +987,14 @@ function createDayElement(day, year, month, isOtherMonth, isToday = false) {
     dayElement.className = 'calendar-day';
     dayElement.textContent = day;
 
-    if (isOtherMonth) {
-        dayElement.classList.add('other-month');
+    // Check if this day is a Sunday (day of week = 0)
+    const dateObj = new Date(year, month, day);
+    if (dateObj.getDay() === 0) {
+        dayElement.classList.add('sunday');
     }
 
-    if (isToday) {
-        dayElement.classList.add('today');
-    }
+    if (isOtherMonth) dayElement.classList.add('other-month');
+    if (isToday) dayElement.classList.add('today');
 
     // Check if selected
     if (selectedDate.getFullYear() === year &&
@@ -337,40 +1012,49 @@ function createDayElement(day, year, month, isOtherMonth, isToday = false) {
     // Add click handler
     dayElement.addEventListener('click', () => {
         selectedDate = new Date(year, month, day);
-        generateCalendars(); // Refresh to show selection
-        loadTimetableForDate(); // Load existing or create new
+        generateCalendars();
+        loadTimetableForDate();
+        loadAllTabsForDate();
     });
 
     return dayElement;
 }
 
-// Load timetable for selected date or create new 3-row template
-function loadTimetableForDate() {
-    // Update the date display to show selected date
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
+// =============================================================================
+// TIMETABLE MODULE
+// =============================================================================
 
-    const dayName = days[selectedDate.getDay()];
+function loadTimetableForDate() {
+    const dayName = DAYS[selectedDate.getDay()];
     const day = selectedDate.getDate();
-    const monthName = months[selectedDate.getMonth()];
+    const monthName = MONTHS[selectedDate.getMonth()];
     const year = selectedDate.getFullYear();
 
-    // Update the working date display
+    // Update working date display
     const selectedDateDisplay = document.getElementById('selectedDateDisplay');
     if (selectedDateDisplay) {
         selectedDateDisplay.textContent = `${dayName} ${day} ${monthName} ${year}`;
     }
 
-    // Get date string for storage
-    const dateStr = formatDateForStorage(year, months.indexOf(monthName), day);
+    // Update working date color (red = today, blue = other day)
+    updateWorkingDateColor();
 
-    // Check if this date has saved timetable data
+    const dateStr = getCurrentDateStr();
+
     if (savedTimetables[dateStr]) {
-        // Load existing timetable
-        loadTimetableData(savedTimetables[dateStr]);
+        const savedData = savedTimetables[dateStr];
+        // Handle both old format (array) and new format (object with startHour and rows)
+        if (Array.isArray(savedData)) {
+            loadTimetableData(savedData);
+        } else {
+            // New format: update startHour and load rows
+            if (savedData.startHour !== undefined) {
+                startHour = savedData.startHour;
+                document.getElementById('startTimeSelect').value = startHour;
+            }
+            loadTimetableData(savedData.rows || []);
+        }
     } else {
-        // Create fresh 3-row template
         const tbody = document.getElementById('timetableBody');
         tbody.innerHTML = '';
         createDefaultTimetable();
@@ -379,18 +1063,23 @@ function loadTimetableForDate() {
     console.log(`Loaded timetable for: ${dayName} ${day} ${monthName} ${year}`);
 }
 
-// Timetable functions
 function addRow(afterRowId) {
     const tbody = document.getElementById('timetableBody');
-    const rows = tbody.querySelectorAll('tr');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
     const targetRow = tbody.querySelector(`tr[data-row-id="${afterRowId}"]`);
 
     const newRow = createTableRow(rowCounter++);
 
-    if (targetRow.nextElementSibling) {
+    // Insert before the auto-fill row (last row), or after target row
+    const autoFillRow = rows[rows.length - 1];
+
+    if (targetRow === autoFillRow) {
+        // If clicking + on auto-fill row, insert before it
+        tbody.insertBefore(newRow, autoFillRow);
+    } else if (targetRow.nextElementSibling) {
         tbody.insertBefore(newRow, targetRow.nextElementSibling);
     } else {
-        tbody.appendChild(newRow);
+        tbody.insertBefore(newRow, autoFillRow);
     }
 
     redistributeTime();
@@ -400,37 +1089,26 @@ function addRow(afterRowId) {
 
 function deleteRow(rowId) {
     const tbody = document.getElementById('timetableBody');
-    const rows = tbody.querySelectorAll('tr');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
 
-    if (rows.length <= 3) {
-        alert('Cannot delete row. Minimum 3 rows required (Start, Sleep, End).');
+    // Need at least 1 activity + 1 auto-fill = 2 rows minimum
+    if (rows.length <= 1) {
+        alert('Cannot delete the last row.');
         return;
     }
 
     const rowToDelete = tbody.querySelector(`tr[data-row-id="${rowId}"]`);
     if (rowToDelete) {
-        const rowIndex = Array.from(rows).indexOf(rowToDelete);
-        const task = rowToDelete.querySelector('.task');
-        const taskValue = task ? task.value : '';
+        const rowIndex = rows.indexOf(rowToDelete);
+        const rowType = getRowType(rowToDelete, rowIndex, rows.length);
 
-        // Don't allow deleting core rows (Start, Sleep, End)
-        const isStartRow = rowIndex === 0 || taskValue === 'Start';
-        const isEndRow = rowIndex === rows.length - 1 || taskValue === 'Day End';
-        const isSleepRow = taskValue === 'Sleep' || (rows.length === 3 && rowIndex === 1);
-
-        if (isStartRow) {
-            alert('Cannot delete the Start row.');
-            return;
-        }
-        if (isSleepRow) {
-            alert('Cannot delete the Sleep row (buffer).');
-            return;
-        }
-        if (isEndRow) {
-            alert('Cannot delete the End row.');
+        // Can't delete the auto-fill row (last row)
+        if (rowType === 'autofill') {
+            alert('Cannot delete the Sleep/Buffer row. It auto-fills remaining time.');
             return;
         }
 
+        // Delete activity row
         rowToDelete.remove();
         redistributeTime();
         updateRowButtons();
@@ -454,6 +1132,7 @@ function createTableRow(id) {
                 <input type="text" class="category-custom" placeholder="Or type custom..." style="display: none;">
             </div>
         </td>
+        <td><input type="text" class="comment" placeholder="Add comment..."></td>
         <td class="row-actions">
             <button class="add-btn" onclick="addRow(${id})">+</button>
             <button class="delete-btn" onclick="deleteRow(${id})">-</button>
@@ -463,41 +1142,209 @@ function createTableRow(id) {
     // Add event listeners
     const durationInput = row.querySelector('.duration');
     const taskInput = row.querySelector('.task');
+    const commentInput = row.querySelector('.comment');
     const categorySelect = row.querySelector('.category-select');
     const categoryCustom = row.querySelector('.category-custom');
 
-    durationInput.addEventListener('input', redistributeTime);
+    durationInput.addEventListener('input', function() {
+        validateAndUpdateDuration(this);
+        redistributeTime();
+    });
     taskInput.addEventListener('input', saveData);
+    commentInput.addEventListener('input', saveData);
 
-    // Setup category system
     setupCategorySystem(categorySelect, categoryCustom);
 
     return row;
 }
 
-// Category system functions
+function createDefaultTimetable() {
+    const tbody = document.getElementById('timetableBody');
+    tbody.innerHTML = '';
+
+    // Create one empty activity row for the user to start with
+    const activityRow = createTableRow(0);
+    activityRow.querySelector('.duration').value = '1.0';
+    activityRow.querySelector('.task').placeholder = 'Enter your first activity...';
+    tbody.appendChild(activityRow);
+
+    // Auto-fill Sleep row (always last, auto-calculates remaining time)
+    const sleepRow = createTableRow(1);
+    sleepRow.dataset.isAutoFill = 'true';
+    sleepRow.querySelector('.duration').value = '23.0';
+    sleepRow.querySelector('.duration').readOnly = true;
+    sleepRow.querySelector('.task').value = 'Sleep';
+    const sleepCategorySelect = sleepRow.querySelector('.category-select');
+    if (sleepCategorySelect) {
+        sleepCategorySelect.value = 'sleeping';
+        updateCategoryDisplay(sleepCategorySelect, 'sleeping');
+    }
+    tbody.appendChild(sleepRow);
+
+    rowCounter = 2;
+    redistributeTime();
+    updateRowButtons();
+}
+
+function redistributeTime() {
+    const tbody = document.getElementById('timetableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (rows.length === 0) return;
+
+    // Calculate total activity duration (all rows except last auto-fill)
+    let totalActivityDuration = 0;
+
+    rows.forEach((row, index) => {
+        const rowType = getRowType(row, index, rows.length);
+        const durationInput = row.querySelector('.duration');
+
+        if (rowType === 'activity') {
+            durationInput.readOnly = false;
+            const duration = parseFloat(durationInput.value) || 0;
+            totalActivityDuration += duration;
+        }
+    });
+
+    // Update auto-fill row (last row) - fills remaining time
+    const autoFillRow = rows[rows.length - 1];
+    if (autoFillRow) {
+        const remaining = Math.max(0, 24 - totalActivityDuration);
+        const durationInput = autoFillRow.querySelector('.duration');
+        durationInput.value = remaining.toFixed(2);
+        durationInput.readOnly = true;
+        autoFillRow.dataset.isAutoFill = 'true';
+        autoFillRow.classList.add('autofill-row');
+    }
+
+    // Update start times for all rows
+    const startTimeMinutes = startHour * 60;
+    let currentTimeMinutes = startTimeMinutes;
+
+    rows.forEach((row) => {
+        const durationHours = parseFloat(row.querySelector('.duration').value) || 0;
+        const durationMinutes = durationHours * 60;
+
+        const startTimeCell = row.querySelector('.start-time');
+        startTimeCell.textContent = formatTime(currentTimeMinutes);
+
+        currentTimeMinutes += durationMinutes;
+    });
+
+    updateRowStyling();
+    updateTimetableFooter();
+    saveData();
+}
+
+function updateRowStyling() {
+    const tbody = document.getElementById('timetableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (rows.length === 0) return;
+
+    rows.forEach((row, index) => {
+        const rowType = getRowType(row, index, rows.length);
+        const durationInput = row.querySelector('.duration');
+        const taskInput = row.querySelector('.task');
+        const categorySelect = row.querySelector('.category-select');
+
+        // Reset styling
+        taskInput.style.fontWeight = '';
+        taskInput.style.color = '';
+        durationInput.style.color = '';
+        durationInput.style.fontWeight = '';
+        row.classList.remove('autofill-row');
+        row.style.backgroundColor = '';
+
+        // Apply styling based on row type
+        if (rowType === 'autofill') {
+            row.classList.add('autofill-row');
+            // No special color - just italics via CSS
+        }
+        // No yellow highlight for max duration - keeping rows uniform
+
+        // Apply category background color
+        if (categorySelect && categorySelect.value) {
+            applyCategoryBackground(row, categorySelect.value);
+        }
+    });
+}
+
+// Apply category background color to row
+function applyCategoryBackground(row, categoryValue) {
+    const allCategories = [...PRESET_CATEGORIES, ...customCategories];
+    const category = allCategories.find(cat => cat.value === categoryValue);
+
+    if (category) {
+        const categorySelect = row.querySelector('.category-select');
+
+        if (categorySelect) {
+            categorySelect.style.backgroundColor = category.color;
+            categorySelect.style.color = getContrastColor(category.color);
+            categorySelect.style.fontWeight = 'bold';
+            categorySelect.style.borderColor = category.color;
+        }
+    }
+}
+
+// Get contrasting text color (white or black) based on background
+function getContrastColor(hexColor) {
+    // Remove # if present
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+}
+
+function updateRowButtons() {
+    const tbody = document.getElementById('timetableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (rows.length === 0) return;
+
+    rows.forEach((row, index) => {
+        const addBtn = row.querySelector('.add-btn');
+        const deleteBtn = row.querySelector('.delete-btn');
+        const rowType = getRowType(row, index, rows.length);
+
+        if (rowType === 'autofill') {
+            // Auto-fill row: can add before it, but can't delete it
+            addBtn.style.display = 'inline';
+            deleteBtn.style.display = 'none';
+        } else {
+            // Activity rows: can add after, can delete (unless it's the only activity)
+            addBtn.style.display = 'inline';
+            // Can delete if there's more than just this row + autofill
+            deleteBtn.style.display = rows.length > 2 ? 'inline' : 'none';
+        }
+    });
+}
+
+// =============================================================================
+// CATEGORY SYSTEM
+// =============================================================================
+
 function setupCategorySystem(selectElement, customElement) {
-    // Populate preset categories
     populateCategories(selectElement);
 
-    // Handle category selection
     selectElement.addEventListener('change', function() {
         if (this.value === 'custom') {
-            // Show custom input
             customElement.style.display = 'block';
             selectElement.style.display = 'none';
             customElement.focus();
         } else {
-            // Update the styling based on category
             updateCategoryDisplay(this, this.value);
             saveData();
         }
     });
 
-    // Handle custom category input
     customElement.addEventListener('blur', function() {
         if (this.value.trim()) {
-            // Add to custom categories if new
             const customValue = this.value.trim().toLowerCase();
             if (!customCategories.some(cat => cat.value === customValue)) {
                 customCategories.push({
@@ -508,31 +1355,25 @@ function setupCategorySystem(selectElement, customElement) {
                 saveCustomCategories();
             }
 
-            // Select the custom category
             populateCategories(selectElement);
             selectElement.value = customValue;
             updateCategoryDisplay(selectElement, customValue);
         }
 
-        // Hide custom input and show select
         customElement.style.display = 'none';
         selectElement.style.display = 'block';
         saveData();
     });
 
     customElement.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            this.blur();
-        }
+        if (e.key === 'Enter') this.blur();
     });
 }
 
 function populateCategories(selectElement) {
-    // Clear existing options except the first one
     selectElement.innerHTML = '<option value="">Select category...</option>';
 
-    // Add preset categories
-    presetCategories.forEach(category => {
+    PRESET_CATEGORIES.forEach(category => {
         const option = document.createElement('option');
         option.value = category.value;
         option.textContent = category.label;
@@ -540,7 +1381,6 @@ function populateCategories(selectElement) {
         selectElement.appendChild(option);
     });
 
-    // Add custom categories
     customCategories.forEach(category => {
         const option = document.createElement('option');
         option.value = category.value;
@@ -549,7 +1389,6 @@ function populateCategories(selectElement) {
         selectElement.appendChild(option);
     });
 
-    // Add "Add custom..." option
     const customOption = document.createElement('option');
     customOption.value = 'custom';
     customOption.textContent = '+ Add custom category...';
@@ -558,13 +1397,14 @@ function populateCategories(selectElement) {
 }
 
 function updateCategoryDisplay(selectElement, value) {
-    const allCategories = [...presetCategories, ...customCategories];
+    const allCategories = [...PRESET_CATEGORIES, ...customCategories];
     const category = allCategories.find(cat => cat.value === value);
 
     if (category) {
-        selectElement.style.backgroundColor = category.color + '20'; // 20% opacity
+        // Solid background with contrasting text
+        selectElement.style.backgroundColor = category.color;
         selectElement.style.borderColor = category.color;
-        selectElement.style.color = category.color;
+        selectElement.style.color = getContrastColor(category.color);
         selectElement.style.fontWeight = 'bold';
     } else {
         selectElement.style.backgroundColor = '';
@@ -585,362 +1425,522 @@ function loadCustomCategories() {
     }
 }
 
-function updateRowButtons() {
-    const tbody = document.getElementById('timetableBody');
-    const rows = tbody.querySelectorAll('tr');
+// =============================================================================
+// DIARY MODULE
+// =============================================================================
 
-    if (rows.length < 3) return; // Need at least 3 rows
+function setupDiaryListeners() {
+    const saveDiaryBtn = document.getElementById('saveDiaryBtn');
+    if (saveDiaryBtn) {
+        saveDiaryBtn.addEventListener('click', saveDiary);
+    }
 
-    rows.forEach((row, index) => {
-        const addBtn = row.querySelector('.add-btn');
-        const deleteBtn = row.querySelector('.delete-btn');
-
-        // Identify row type by position and buffer flag
-        const isStartRow = index === 0;
-        const isEndRow = index === rows.length - 1;
-
-        // Check for buffer flag in the row data
-        const rowId = row.getAttribute('data-row-id');
-        const currentDateStr = formatDateForStorage(currentYear, months.indexOf(monthName), selectedDay);
-        let isBufferRow = false;
-
-        if (savedTimetables[currentDateStr]) {
-            const rowData = savedTimetables[currentDateStr].find(data => data.id == rowId);
-            isBufferRow = rowData && rowData.isBuffer;
-        }
-
-        if (isStartRow) {
-            // First row: + only (no -)
-            addBtn.style.display = 'inline';
-            deleteBtn.style.display = 'none';
-        } else if (isBufferRow) {
-            // Buffer row: + only (no -)
-            addBtn.style.display = 'inline';
-            deleteBtn.style.display = 'none';
-        } else if (isEndRow) {
-            // Last row: NOTHING (no + or -)
-            addBtn.style.display = 'none';
-            deleteBtn.style.display = 'none';
-        } else {
-            // All other rows: both + and -
-            addBtn.style.display = 'inline';
-            deleteBtn.style.display = 'inline';
-        }
-    });
+    const diaryContent = document.getElementById('diaryContent');
+    if (diaryContent) {
+        diaryContent.addEventListener('input', saveDiary);
+    }
 }
 
-// Time redistribution algorithm with fixed end row
-function redistributeTime() {
-    const tbody = document.getElementById('timetableBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+function saveDiary() {
+    const dateStr = getCurrentDateStr();
+    const content = document.getElementById('diaryContent')?.value || '';
 
-    if (rows.length === 0) return;
-
-    const startTime = startHour * 60; // Start time in minutes
-    const totalMinutes = 24 * 60; // 24 hours in minutes
-    const endRowDurationMinutes = 1; // Last row is always 1 minute
-
-    // Handle case with only 1 row (shouldn't happen, but safety check)
-    if (rows.length === 1) {
-        const row = rows[0];
-        row.querySelector('.duration').value = (totalMinutes / 60).toFixed(2);
-        row.querySelector('.start-time').textContent = formatTime(startTime);
-        row.querySelector('.task').value = 'Full Day';
-        makeRowNonEditable(row, false); // Not the end row
-        saveData();
-        return;
+    if (!appState.savedData[dateStr]) {
+        appState.savedData[dateStr] = {};
     }
-
-    // Fix the last row
-    const lastRow = rows[rows.length - 1];
-    const lastRowDurationHours = endRowDurationMinutes / 60;
-    lastRow.querySelector('.duration').value = lastRowDurationHours.toFixed(2);
-    lastRow.querySelector('.task').value = 'Day End';
-    makeRowNonEditable(lastRow, true); // This is the end row
-
-    // Smart auto-adjustment: Only adjust buffer row (second-to-last)
-    const availableMinutes = totalMinutes - endRowDurationMinutes;
-
-    if (rows.length === 2) {
-        // Only start row and end row - adjust start row to fill remaining time
-        const startRow = rows[0];
-        startRow.querySelector('.duration').value = (availableMinutes / 60).toFixed(2);
-        makeRowNonEditable(startRow, false);
-    } else {
-        // Multiple rows: use smart adjustment with buffer row
-        const bufferRowIndex = rows.length - 2; // Second-to-last row
-        const bufferRow = rows[bufferRowIndex];
-        const fixedRows = rows.slice(0, -2); // All rows except buffer and end
-
-        // Calculate total time used by fixed rows
-        let fixedTotal = 0;
-        fixedRows.forEach(row => {
-            const durationHours = parseFloat(row.querySelector('.duration').value) || 0;
-            fixedTotal += durationHours * 60; // Convert to minutes
-        });
-
-        // Calculate required buffer duration
-        const requiredBufferMinutes = availableMinutes - fixedTotal;
-        const requiredBufferHours = requiredBufferMinutes / 60;
-
-        // Check if buffer duration is valid (at least 0.1 hours)
-        if (requiredBufferHours >= 0.1) {
-            // Set buffer row duration
-            bufferRow.querySelector('.duration').value = requiredBufferHours.toFixed(2);
-
-            // Mark buffer row visually (add a class for styling)
-            bufferRow.classList.add('buffer-row');
-
-            // Ensure other rows are not marked as buffer
-            fixedRows.forEach(row => {
-                row.classList.remove('buffer-row');
-                makeRowNonEditable(row, false);
-            });
-        } else {
-            // Fallback: buffer would be too small, distribute proportionally
-            const allAdjustableRows = rows.slice(0, -1);
-            let adjustableTotal = 0;
-            const adjustableDurations = [];
-
-            allAdjustableRows.forEach(row => {
-                const durationHours = parseFloat(row.querySelector('.duration').value) || 0;
-                adjustableDurations.push(durationHours);
-                adjustableTotal += durationHours * 60;
-            });
-
-            if (adjustableTotal <= 0) {
-                // Equal distribution
-                const equalDurationHours = (availableMinutes / 60) / allAdjustableRows.length;
-                allAdjustableRows.forEach(row => {
-                    row.querySelector('.duration').value = equalDurationHours.toFixed(2);
-                    row.classList.remove('buffer-row');
-                });
-            } else {
-                // Proportional distribution
-                const ratio = availableMinutes / adjustableTotal;
-                allAdjustableRows.forEach((row, index) => {
-                    const newDurationHours = (adjustableDurations[index] * ratio);
-                    row.querySelector('.duration').value = newDurationHours.toFixed(2);
-                    row.classList.remove('buffer-row');
-                });
-            }
-        }
-    }
-
-    // Update start times for all rows
-    let currentTimeMinutes = startTime;
-    rows.forEach((row, index) => {
-        const durationHours = parseFloat(row.querySelector('.duration').value) || 0;
-        const durationMinutes = durationHours * 60;
-
-        const startTimeCell = row.querySelector('.start-time');
-        startTimeCell.textContent = formatTime(currentTimeMinutes);
-
-        // For the last row, ensure it ends exactly at start time (next day)
-        if (index === rows.length - 1) {
-            // Last row should start at (startTime - 1 minute)
-            const endRowStartTime = (startTime - endRowDurationMinutes + totalMinutes) % totalMinutes;
-            startTimeCell.textContent = formatTime(endRowStartTime);
-        }
-
-        currentTimeMinutes += durationMinutes;
-    });
-
-    // Apply special styling to rows
-    updateRowStyling();
+    appState.savedData[dateStr].diary = content;
 
     saveData();
 }
 
-// Function to update row styling (Start/End bold, max duration orange)
-function updateRowStyling() {
-    const tbody = document.getElementById('timetableBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+function loadDiary() {
+    const dateStr = getCurrentDateStr();
+    const content = appState.savedData[dateStr]?.diary || '';
+    const diaryContent = document.getElementById('diaryContent');
+    if (diaryContent) {
+        diaryContent.value = content;
+    }
+}
 
-    if (rows.length === 0) return;
+// =============================================================================
+// CALORIES MODULE (uses table-based functions defined later)
+// =============================================================================
 
-    // Find row with maximum duration
-    let maxDuration = 0;
-    let maxDurationRowIndex = -1;
+function setupCaloriesListeners() {
+    // Table-based calorie tracking - no separate listeners needed
+    // +/- buttons handle row management, auto-save on input is set in addCalorieRow
+}
 
-    rows.forEach((row, index) => {
-        const durationInput = row.querySelector('.duration');
-        const taskInput = row.querySelector('.task');
-        const duration = parseFloat(durationInput.value) || 0;
+// =============================================================================
+// FITNESS ACTIVITY MODULE
+// =============================================================================
 
-        // Reset previous styling
-        taskInput.style.fontWeight = '';
-        taskInput.style.color = '';
-        durationInput.style.color = '';
-        durationInput.style.fontWeight = '';
+function setupFitnessListeners() {
+    // No more add exercise button - using +/- in rows
+}
 
-        // Check for maximum duration (excluding Day End row)
-        if (duration > maxDuration && taskInput.value !== 'Day End') {
-            maxDuration = duration;
-            maxDurationRowIndex = index;
-        }
+function addFitnessRow(afterRow = null) {
+    const tbody = document.getElementById('fitnessBody');
+    if (!tbody) return;
 
-        // Style Start and End rows
-        if (taskInput.value === 'Start' || taskInput.value === 'Day End') {
-            taskInput.style.fontWeight = 'bold';
-        }
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="exercise-name" placeholder="Exercise"></td>
+        <td><input type="number" class="sets" min="0" placeholder="0"></td>
+        <td><input type="number" class="reps" min="0" placeholder="0"></td>
+        <td><input type="number" class="weight-lifted" min="0" step="0.5" placeholder="0"></td>
+        <td><input type="number" class="body-weight" min="0" step="0.1" placeholder="kg"></td>
+        <td><input type="number" class="steps" min="0" placeholder="0"></td>
+        <td><input type="number" class="distance" min="0" step="0.01" placeholder="0"></td>
+        <td><input type="number" class="calories-burnt" min="0" placeholder="0"></td>
+        <td><input type="text" class="exercise-comment" placeholder="Notes"></td>
+        <td class="actions">
+            <button class="add-btn" onclick="addFitnessRow(this.closest('tr'))">+</button>
+            <button class="delete-btn" onclick="deleteFitnessRow(this)">-</button>
+        </td>
+    `;
+
+    // Auto-save on input
+    row.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', () => {
+            saveFitness();
+            updateFitnessStats();
+        });
     });
 
-    // Style the row with maximum duration
-    if (maxDurationRowIndex >= 0) {
-        const maxRow = rows[maxDurationRowIndex];
-        const maxDurationInput = maxRow.querySelector('.duration');
-        const maxTaskInput = maxRow.querySelector('.task');
-
-        maxDurationInput.style.color = '#ff8c00';
-        maxDurationInput.style.fontWeight = 'bold';
-        maxTaskInput.style.color = '#ff8c00';
-        maxTaskInput.style.fontWeight = 'bold';
-    }
-}
-
-// Helper function to make row non-editable
-function makeRowNonEditable(row, isEndRow) {
-    const durationInput = row.querySelector('.duration');
-    const taskInput = row.querySelector('.task');
-    const categorySelect = row.querySelector('.category-select');
-
-    if (isEndRow) {
-        // End row: make non-editable but look normal, only bold task
-        durationInput.readOnly = true;
-        durationInput.style.backgroundColor = 'transparent';
-        durationInput.style.border = 'none';
-        durationInput.style.color = 'inherit';
-        durationInput.style.pointerEvents = 'none';
-
-        taskInput.readOnly = true;
-        taskInput.style.backgroundColor = 'transparent';
-        taskInput.style.border = 'none';
-        taskInput.style.color = 'inherit';
-        taskInput.style.fontWeight = 'bold';
-        taskInput.style.pointerEvents = 'none';
-
-        if (categorySelect) {
-            categorySelect.disabled = true;
-            categorySelect.style.backgroundColor = 'transparent';
-            categorySelect.style.border = 'none';
-            categorySelect.style.color = 'inherit';
-            categorySelect.style.pointerEvents = 'none';
-        }
+    if (afterRow && afterRow.parentNode === tbody) {
+        afterRow.after(row);
     } else {
-        // Regular row: make sure it's editable
-        durationInput.readOnly = false;
-        durationInput.style.backgroundColor = '';
-        durationInput.style.border = '';
-        durationInput.style.color = '';
-        durationInput.style.pointerEvents = '';
+        tbody.appendChild(row);
+    }
 
-        taskInput.readOnly = false;
-        taskInput.style.backgroundColor = '';
-        taskInput.style.border = '';
-        taskInput.style.color = '';
-        taskInput.style.pointerEvents = '';
+    saveFitness();
+    updateFitnessStats();
+}
 
-        if (categorySelect) {
-            categorySelect.disabled = false;
-            categorySelect.style.backgroundColor = '';
-            categorySelect.style.border = '';
-            categorySelect.style.color = '';
-            categorySelect.style.pointerEvents = '';
+function deleteFitnessRow(btn) {
+    const tbody = document.getElementById('fitnessBody');
+    const rows = tbody.querySelectorAll('tr');
+
+    // Keep at least one row
+    if (rows.length <= 1) {
+        // Clear the row instead of deleting
+        const row = btn.closest('tr');
+        row.querySelectorAll('input').forEach(input => input.value = '');
+        saveFitness();
+        updateFitnessStats();
+        return;
+    }
+
+    btn.closest('tr').remove();
+    saveFitness();
+    updateFitnessStats();
+}
+
+function saveFitness() {
+    const dateStr = getCurrentDateStr();
+    const rows = document.querySelectorAll('#fitnessBody tr');
+    const exercises = [];
+
+    rows.forEach(row => {
+        exercises.push({
+            exercise: row.querySelector('.exercise-name')?.value || '',
+            sets: parseInt(row.querySelector('.sets')?.value) || 0,
+            reps: parseInt(row.querySelector('.reps')?.value) || 0,
+            weight: parseFloat(row.querySelector('.weight-lifted')?.value) || 0,
+            bodyWeight: parseFloat(row.querySelector('.body-weight')?.value) || 0,
+            steps: parseInt(row.querySelector('.steps')?.value) || 0,
+            distance: parseFloat(row.querySelector('.distance')?.value) || 0,
+            caloriesBurnt: parseInt(row.querySelector('.calories-burnt')?.value) || 0,
+            comment: row.querySelector('.exercise-comment')?.value || ''
+        });
+    });
+
+    if (!appState.savedData[dateStr]) {
+        appState.savedData[dateStr] = {};
+    }
+    appState.savedData[dateStr].fitness = exercises;
+
+    saveData();
+}
+
+function loadFitness() {
+    const dateStr = getCurrentDateStr();
+    const exercises = appState.savedData[dateStr]?.fitness || [];
+    const tbody = document.getElementById('fitnessBody');
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (exercises.length === 0) {
+        // Add one empty row by default
+        addFitnessRow();
+        return;
+    }
+
+    exercises.forEach(ex => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" class="exercise-name" placeholder="Exercise" value="${ex.exercise || ''}"></td>
+            <td><input type="number" class="sets" min="0" placeholder="0" value="${ex.sets || ''}"></td>
+            <td><input type="number" class="reps" min="0" placeholder="0" value="${ex.reps || ''}"></td>
+            <td><input type="number" class="weight-lifted" min="0" step="0.5" placeholder="0" value="${ex.weight || ''}"></td>
+            <td><input type="number" class="body-weight" min="0" step="0.1" placeholder="kg" value="${ex.bodyWeight || ''}"></td>
+            <td><input type="number" class="steps" min="0" placeholder="0" value="${ex.steps || ''}"></td>
+            <td><input type="number" class="distance" min="0" step="0.01" placeholder="0" value="${ex.distance || ''}"></td>
+            <td><input type="number" class="calories-burnt" min="0" placeholder="0" value="${ex.caloriesBurnt || ''}"></td>
+            <td><input type="text" class="exercise-comment" placeholder="Notes" value="${ex.comment || ''}"></td>
+            <td class="actions">
+                <button class="add-btn" onclick="addFitnessRow(this.closest('tr'))">+</button>
+                <button class="delete-btn" onclick="deleteFitnessRow(this)">-</button>
+            </td>
+        `;
+
+        row.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', () => {
+                saveFitness();
+                updateFitnessStats();
+            });
+        });
+
+        tbody.appendChild(row);
+    });
+
+    updateFitnessStats();
+}
+
+function updateFitnessStats() {
+    const rows = document.querySelectorAll('#fitnessBody tr');
+    const bodyWeights = [];
+    let totalCaloriesBurnt = 0;
+    let totalSteps = 0;
+    let totalDistance = 0;
+
+    rows.forEach(row => {
+        const bw = parseFloat(row.querySelector('.body-weight')?.value);
+        if (bw > 0) {
+            bodyWeights.push(bw);
+        }
+        totalCaloriesBurnt += parseInt(row.querySelector('.calories-burnt')?.value) || 0;
+        totalSteps += parseInt(row.querySelector('.steps')?.value) || 0;
+        totalDistance += parseFloat(row.querySelector('.distance')?.value) || 0;
+    });
+
+    const avgEl = document.getElementById('avgBodyWeight');
+    if (avgEl) {
+        if (bodyWeights.length > 0) {
+            const avg = bodyWeights.reduce((a, b) => a + b, 0) / bodyWeights.length;
+            avgEl.innerHTML = `<strong>${avg.toFixed(1)} kg</strong>`;
+        } else {
+            avgEl.innerHTML = '<strong>--</strong>';
         }
     }
-}
 
-// Format time from minutes
-function formatTime(minutes) {
-    // Round to nearest minute to avoid floating point precision issues
-    const roundedMinutes = Math.round(minutes);
-    const hours = Math.floor(roundedMinutes / 60) % 24;
-    const mins = roundedMinutes % 60;
+    const stepsEl = document.getElementById('totalSteps');
+    if (stepsEl) {
+        stepsEl.innerHTML = `<strong>${totalSteps.toLocaleString()}</strong>`;
+    }
 
-    if (timeFormat === 12) {
-        const period = hours >= 12 ? 'PM' : 'AM';
-        const displayHours = hours % 12 || 12;
-        return `${displayHours}:${mins.toString().padStart(2, '0')} ${period}`;
-    } else {
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    const distanceEl = document.getElementById('totalDistance');
+    if (distanceEl) {
+        distanceEl.innerHTML = `<strong>${totalDistance.toFixed(2)} km</strong>`;
+    }
+
+    const caloriesEl = document.getElementById('totalCaloriesBurnt');
+    if (caloriesEl) {
+        caloriesEl.innerHTML = `<strong>${totalCaloriesBurnt}</strong>`;
     }
 }
 
-// Clear timetable
-// Clear only the current day's table
+function clearFitnessTable() {
+    if (confirm('Clear all fitness entries for this day?')) {
+        const tbody = document.getElementById('fitnessBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            addFitnessRow();
+        }
+
+        const dateStr = getCurrentDateStr();
+        if (appState.savedData[dateStr]) {
+            appState.savedData[dateStr].fitness = [];
+        }
+        saveData();
+        updateFitnessStats();
+    }
+}
+
+// =============================================================================
+// CALORIE TRACKING MODULE
+// =============================================================================
+
+function addCalorieRow(afterRow = null) {
+    const tbody = document.getElementById('caloriesBody');
+    if (!tbody) return;
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="text" class="food-item" placeholder="Food item"></td>
+        <td>
+            <select class="food-type">
+                <option value="">Select</option>
+                <option value="food">Food</option>
+                <option value="ingredient">Ingredient</option>
+                <option value="drink">Drink</option>
+                <option value="snack">Snack</option>
+            </select>
+        </td>
+        <td>
+            <select class="food-class">
+                <option value="">Select</option>
+                <option value="protein">Protein</option>
+                <option value="carbs">Carbs</option>
+                <option value="fat">Fat</option>
+                <option value="fiber">Fiber</option>
+                <option value="mixed">Mixed</option>
+            </select>
+        </td>
+        <td><input type="number" class="food-calories" min="0" placeholder="0"></td>
+        <td><input type="text" class="food-comment" placeholder="Notes"></td>
+        <td class="actions">
+            <button class="add-btn" onclick="addCalorieRow(this.closest('tr'))">+</button>
+            <button class="delete-btn" onclick="deleteCalorieRow(this)">-</button>
+        </td>
+    `;
+
+    // Auto-save on input/change
+    row.querySelectorAll('input, select').forEach(el => {
+        el.addEventListener('input', () => {
+            saveCalories();
+            updateCalorieStats();
+        });
+        el.addEventListener('change', () => {
+            saveCalories();
+            updateCalorieStats();
+        });
+    });
+
+    if (afterRow && afterRow.parentNode === tbody) {
+        afterRow.after(row);
+    } else {
+        tbody.appendChild(row);
+    }
+
+    saveCalories();
+    updateCalorieStats();
+}
+
+function deleteCalorieRow(btn) {
+    const tbody = document.getElementById('caloriesBody');
+    const rows = tbody.querySelectorAll('tr');
+
+    // Keep at least one row
+    if (rows.length <= 1) {
+        // Clear the row instead of deleting
+        const row = btn.closest('tr');
+        row.querySelectorAll('input').forEach(input => input.value = '');
+        row.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
+        saveCalories();
+        updateCalorieStats();
+        return;
+    }
+
+    btn.closest('tr').remove();
+    saveCalories();
+    updateCalorieStats();
+}
+
+function saveCalories() {
+    const dateStr = getCurrentDateStr();
+    const rows = document.querySelectorAll('#caloriesBody tr');
+    const foods = [];
+
+    rows.forEach(row => {
+        foods.push({
+            item: row.querySelector('.food-item')?.value || '',
+            type: row.querySelector('.food-type')?.value || '',
+            foodClass: row.querySelector('.food-class')?.value || '',
+            calories: parseInt(row.querySelector('.food-calories')?.value) || 0,
+            comment: row.querySelector('.food-comment')?.value || ''
+        });
+    });
+
+    if (!appState.savedData[dateStr]) {
+        appState.savedData[dateStr] = {};
+    }
+    appState.savedData[dateStr].calories = foods;
+
+    saveData();
+}
+
+function loadCalories() {
+    const dateStr = getCurrentDateStr();
+    const foods = appState.savedData[dateStr]?.calories || [];
+    const tbody = document.getElementById('caloriesBody');
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!Array.isArray(foods) || foods.length === 0) {
+        // Add one empty row by default
+        addCalorieRow();
+        return;
+    }
+
+    foods.forEach(food => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" class="food-item" placeholder="Food item" value="${food.item || ''}"></td>
+            <td>
+                <select class="food-type">
+                    <option value="">Select</option>
+                    <option value="food" ${food.type === 'food' ? 'selected' : ''}>Food</option>
+                    <option value="ingredient" ${food.type === 'ingredient' ? 'selected' : ''}>Ingredient</option>
+                    <option value="drink" ${food.type === 'drink' ? 'selected' : ''}>Drink</option>
+                    <option value="snack" ${food.type === 'snack' ? 'selected' : ''}>Snack</option>
+                </select>
+            </td>
+            <td>
+                <select class="food-class">
+                    <option value="">Select</option>
+                    <option value="protein" ${food.foodClass === 'protein' ? 'selected' : ''}>Protein</option>
+                    <option value="carbs" ${food.foodClass === 'carbs' ? 'selected' : ''}>Carbs</option>
+                    <option value="fat" ${food.foodClass === 'fat' ? 'selected' : ''}>Fat</option>
+                    <option value="fiber" ${food.foodClass === 'fiber' ? 'selected' : ''}>Fiber</option>
+                    <option value="mixed" ${food.foodClass === 'mixed' ? 'selected' : ''}>Mixed</option>
+                </select>
+            </td>
+            <td><input type="number" class="food-calories" min="0" placeholder="0" value="${food.calories || ''}"></td>
+            <td><input type="text" class="food-comment" placeholder="Notes" value="${food.comment || ''}"></td>
+            <td class="actions">
+                <button class="add-btn" onclick="addCalorieRow(this.closest('tr'))">+</button>
+                <button class="delete-btn" onclick="deleteCalorieRow(this)">-</button>
+            </td>
+        `;
+
+        row.querySelectorAll('input, select').forEach(el => {
+            el.addEventListener('input', () => {
+                saveCalories();
+                updateCalorieStats();
+            });
+            el.addEventListener('change', () => {
+                saveCalories();
+                updateCalorieStats();
+            });
+        });
+
+        tbody.appendChild(row);
+    });
+
+    updateCalorieStats();
+}
+
+function updateCalorieStats() {
+    const rows = document.querySelectorAll('#caloriesBody tr');
+    let totalCalories = 0;
+
+    rows.forEach(row => {
+        totalCalories += parseInt(row.querySelector('.food-calories')?.value) || 0;
+    });
+
+    const calEl = document.getElementById('totalCalories');
+    if (calEl) calEl.innerHTML = `<strong>${totalCalories}</strong>`;
+}
+
+function clearCaloriesTable() {
+    if (confirm('Clear all calorie entries for this day?')) {
+        const tbody = document.getElementById('caloriesBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            addCalorieRow();
+        }
+
+        const dateStr = getCurrentDateStr();
+        if (appState.savedData[dateStr]) {
+            appState.savedData[dateStr].calories = [];
+        }
+        saveData();
+        updateCalorieStats();
+    }
+}
+
+function clearDiary() {
+    if (confirm('Clear the diary for this day?')) {
+        const diaryContent = document.getElementById('diaryContent');
+        if (diaryContent) {
+            diaryContent.value = '';
+        }
+
+        const dateStr = getCurrentDateStr();
+        if (appState.savedData[dateStr]) {
+            appState.savedData[dateStr].diary = '';
+        }
+        saveData();
+    }
+}
+
+function loadAllTabsForDate() {
+    loadDiary();
+    loadCalories();
+    loadFitness();
+}
+
+// =============================================================================
+// CLEAR FUNCTIONS
+// =============================================================================
+
 function clearCurrentTable() {
     if (confirm('Are you sure you want to clear the current day\'s timetable?')) {
         const tbody = document.getElementById('timetableBody');
         tbody.innerHTML = '';
-
-        // Add default 24-hour schedule
         createDefaultTimetable();
         updateRowButtons();
         saveData();
     }
 }
 
-// Clear all stored data including all logged days
 function clearAllData() {
-    if (confirm('Are you sure you want to clear ALL timetable data? This will remove all logged days and cannot be undone.')) {
-        // Clear localStorage
+    if (confirm('Are you sure you want to clear ALL data? This cannot be undone.')) {
         localStorage.removeItem('savedTimetables');
         localStorage.removeItem('loggedDays');
+        localStorage.removeItem(CONFIG.STORAGE_KEY);
 
-        // Reset in-memory variables
         savedTimetables = {};
         loggedDays = [];
+        appState.savedData = {};
 
-        // Clear current table
         const tbody = document.getElementById('timetableBody');
         tbody.innerHTML = '';
 
-        // Add default timetable
         createDefaultTimetable();
         updateRowButtons();
-
-        // Update calendar display to remove green highlighting
         generateCalendars();
 
-        alert('All timetable data has been cleared.');
+        // Clear diary tab
+        const diaryContent = document.getElementById('diaryContent');
+        if (diaryContent) diaryContent.value = '';
+
+        // Clear calories tab (table format)
+        const caloriesBody = document.getElementById('caloriesBody');
+        if (caloriesBody) {
+            caloriesBody.innerHTML = '';
+            addCalorieRow();
+        }
+
+        // Clear fitness tab
+        const fitnessBody = document.getElementById('fitnessBody');
+        if (fitnessBody) {
+            fitnessBody.innerHTML = '';
+            addFitnessRow();
+        }
+
+        alert('All data has been cleared.');
     }
 }
 
-// Create default timetable with exactly 2 rows: start and end
-function createDefaultTimetable() {
-    const tbody = document.getElementById('timetableBody');
+// =============================================================================
+// LOG DAY FUNCTIONALITY
+// =============================================================================
 
-    // Create start row (1 minute)
-    const startRow = createTableRow(0);
-    startRow.querySelector('.duration').value = (1/60).toFixed(2); // 0.02 hours (1 minute)
-    startRow.querySelector('.task').value = 'Start';
-    tbody.appendChild(startRow);
-
-    // Create sleep row (23.98 hours) - this is the buffer row
-    const sleepRow = createTableRow(1);
-    sleepRow.querySelector('.duration').value = (23 + 59/60).toFixed(2); // 23.98 hours
-    sleepRow.querySelector('.task').value = 'Sleep';
-    // Set sleeping category
-    const sleepCategorySelect = sleepRow.querySelector('.category-select');
-    if (sleepCategorySelect) {
-        sleepCategorySelect.value = 'sleeping';
-        updateCategoryDisplay(sleepCategorySelect, 'sleeping');
-    }
-    tbody.appendChild(sleepRow);
-
-    // Create end row (1 minute)
-    const endRow = createTableRow(2);
-    endRow.querySelector('.duration').value = (1/60).toFixed(2); // 0.02 hours (1 minute)
-    endRow.querySelector('.task').value = 'Day End';
-    tbody.appendChild(endRow);
-
-    rowCounter = 3;
-    redistributeTime();
-    updateRowButtons();
-}
-
-// Log day functionality
 function logDay() {
     const tbody = document.getElementById('timetableBody');
     const rows = tbody.querySelectorAll('tr');
@@ -950,29 +1950,36 @@ function logDay() {
         return;
     }
 
-    const dateStr = formatDateForStorage(selectedDate.getFullYear(),
-                                        selectedDate.getMonth(),
-                                        selectedDate.getDate());
+    const dateStr = getCurrentDateStr();
 
-    // Save current timetable for this date
-    savedTimetables[dateStr] = getTimetableData();
+    // Save timetable with startHour for this specific day
+    const timetableData = getTimetableData();
+    savedTimetables[dateStr] = {
+        startHour: startHour,
+        rows: timetableData
+    };
 
     if (!loggedDays.includes(dateStr)) {
         loggedDays.push(dateStr);
     }
 
+    console.log('Logging day:', dateStr);
+    console.log('Logged days:', loggedDays);
+    console.log('Saved timetables:', savedTimetables);
+
     saveData();
-    generateCalendars(); // Refresh to show logged day
+    generateCalendars();
 
-    // Auto-export to Excel when logging
-    exportToExcel();
-
-    alert('Day logged successfully and exported to Excel!');
+    alert('Day logged successfully!');
 }
 
-// Data persistence
+// =============================================================================
+// DATA PERSISTENCE
+// =============================================================================
+
 function saveData() {
-    const data = {
+    // Save timetable data (legacy format for backward compatibility)
+    const timetableData = {
         savedTimetables: savedTimetables,
         loggedDays: loggedDays,
         rowCounter: rowCounter,
@@ -982,39 +1989,45 @@ function saveData() {
         selectedDate: selectedDate.toISOString(),
         customCategories: customCategories
     };
-    localStorage.setItem('timetableData', JSON.stringify(data));
+    localStorage.setItem('timetableData', JSON.stringify(timetableData));
+
+    // Save unified app data (new format)
+    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(appState.savedData));
 }
 
 function loadData() {
+    // Load legacy timetable data
     const savedData = localStorage.getItem('timetableData');
     if (savedData) {
         const data = JSON.parse(savedData);
 
-        // Load multi-day data
         savedTimetables = data.savedTimetables || {};
         loggedDays = data.loggedDays || [];
         rowCounter = data.rowCounter || 1;
-        startHour = data.startHour || 6;
-        timeFormat = data.timeFormat || 12;
-        userLocation = data.userLocation || "New York, NY";
+        startHour = data.startHour || CONFIG.DEFAULT_START_HOUR;
+        timeFormat = data.timeFormat || CONFIG.DEFAULT_TIME_FORMAT;
+        userLocation = data.userLocation || CONFIG.DEFAULT_LOCATION;
         customCategories = data.customCategories || [];
 
         if (data.selectedDate) {
             selectedDate = new Date(data.selectedDate);
         }
 
-        // Update selectors
         document.getElementById('startTimeSelect').value = startHour;
         document.getElementById('timeFormatSelect').value = timeFormat;
 
-        // Don't automatically load timetable here - loadTimetableForDate will handle it
         updateRowButtons();
     } else {
-        // Fresh start - no saved data
         savedTimetables = {};
         loggedDays = [];
         customCategories = [];
         updateRowButtons();
+    }
+
+    // Load unified app data
+    const appData = localStorage.getItem(CONFIG.STORAGE_KEY);
+    if (appData) {
+        appState.savedData = JSON.parse(appData);
     }
 }
 
@@ -1023,15 +2036,19 @@ function getTimetableData() {
     const rows = tbody.querySelectorAll('tr');
     const data = [];
 
-    rows.forEach(row => {
+    rows.forEach((row, index) => {
         const categorySelect = row.querySelector('.category-select');
         const categoryValue = categorySelect ? categorySelect.value : '';
+        const commentInput = row.querySelector('.comment');
+        const commentValue = commentInput ? commentInput.value : '';
 
         data.push({
-            id: row.dataset.rowId,
+            id: parseInt(row.dataset.rowId) || index,
             duration: row.querySelector('.duration').value,
             task: row.querySelector('.task').value,
-            category: categoryValue
+            category: categoryValue,
+            comment: commentValue,
+            isAutoFill: row.dataset.isAutoFill === 'true'
         });
     });
 
@@ -1042,12 +2059,57 @@ function loadTimetableData(data) {
     const tbody = document.getElementById('timetableBody');
     tbody.innerHTML = '';
 
-    data.forEach(rowData => {
-        const row = createTableRow(rowData.id);
-        row.querySelector('.duration').value = rowData.duration;
-        row.querySelector('.task').value = rowData.task;
+    if (!data || data.length === 0) {
+        createDefaultTimetable();
+        return;
+    }
 
-        // Set category value if it exists
+    // Check if data has the old format (with isBuffer) and migrate
+    const hasOldFormat = data.some(row => row.isBuffer === true);
+
+    if (hasOldFormat) {
+        // Migrate old format: filter out Start/End rows, keep activities and buffer
+        data = data.filter(row => {
+            const task = (row.task || '').toLowerCase();
+            // Keep buffer row and activities, skip "start" and "day end"
+            return task !== 'start' && task !== 'day end';
+        });
+
+        // Convert buffer row to autofill
+        data.forEach(row => {
+            if (row.isBuffer) {
+                row.isAutoFill = true;
+                delete row.isBuffer;
+            }
+        });
+    }
+
+    // Ensure there's at least one activity row
+    const hasActivities = data.some(row => !row.isAutoFill);
+    if (!hasActivities) {
+        createDefaultTimetable();
+        return;
+    }
+
+    // Load the rows
+    let maxId = 0;
+    data.forEach((rowData, index) => {
+        const row = createTableRow(rowData.id || index);
+        row.querySelector('.duration').value = rowData.duration || '1.0';
+        row.querySelector('.task').value = rowData.task || '';
+
+        // Load comment
+        const commentInput = row.querySelector('.comment');
+        if (commentInput && rowData.comment) {
+            commentInput.value = rowData.comment;
+        }
+
+        // Mark as auto-fill if it is
+        if (rowData.isAutoFill) {
+            row.dataset.isAutoFill = 'true';
+            row.querySelector('.duration').readOnly = true;
+        }
+
         const categorySelect = row.querySelector('.category-select');
         if (categorySelect && rowData.category) {
             categorySelect.value = rowData.category;
@@ -1055,132 +2117,209 @@ function loadTimetableData(data) {
         }
 
         tbody.appendChild(row);
+        maxId = Math.max(maxId, rowData.id || index);
     });
 
+    rowCounter = maxId + 1;
+
+    // Ensure there's an auto-fill row at the end
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const lastRow = rows[rows.length - 1];
+    if (!lastRow.dataset.isAutoFill) {
+        // Add auto-fill row
+        const sleepRow = createTableRow(rowCounter++);
+        sleepRow.dataset.isAutoFill = 'true';
+        sleepRow.querySelector('.duration').readOnly = true;
+        sleepRow.querySelector('.task').value = 'Sleep';
+        const sleepCategorySelect = sleepRow.querySelector('.category-select');
+        if (sleepCategorySelect) {
+            sleepCategorySelect.value = 'sleeping';
+            updateCategoryDisplay(sleepCategorySelect, 'sleeping');
+        }
+        tbody.appendChild(sleepRow);
+    }
+
     redistributeTime();
+    updateRowButtons();
 }
 
-// Utility function for date formatting
-function formatDateForStorage(year, month, day) {
-    return `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-}
+// =============================================================================
+// EXCEL EXPORT/IMPORT
+// =============================================================================
 
-// Excel Export/Import Functions
 function exportToExcel() {
     if (loggedDays.length === 0) {
         alert('No logged days to export');
         return;
     }
 
-    // Prepare data for Excel
-    const excelData = [];
+    const workbook = XLSX.utils.book_new();
 
-    // Add header row
-    excelData.push([
-        'Date',
-        'Start Time',
-        'End Time',
-        'Duration (hrs)',
-        'Task',
-        'Category',
-        'Is Buffer'
-    ]);
+    // Sheet 1: Timetable (clean columns - no metadata)
+    const timetableExcelData = [
+        ['Date', 'Start Time', 'End Time', 'Duration (hrs)', 'Task', 'Category', 'Comment']
+    ];
 
-    // Process each logged day
+    console.log('Exporting logged days:', loggedDays);
+    console.log('Saved timetables:', savedTimetables);
+
     loggedDays.forEach(dateStr => {
-        const timetableData = savedTimetables[dateStr];
-        if (!timetableData) return;
+        const savedData = savedTimetables[dateStr];
+        if (!savedData) {
+            console.log('No data for date:', dateStr);
+            return;
+        }
 
-        // Process each row for this date
-        let currentTimeMinutes = startHour * 60;
+        // Handle both old format (array) and new format (object with startHour and rows)
+        let dayStartHour, timetableRows;
+        if (Array.isArray(savedData)) {
+            // Old format: savedData is directly an array of rows
+            dayStartHour = startHour; // Use current startHour as fallback
+            timetableRows = savedData;
+        } else {
+            // New format: savedData is { startHour, rows }
+            dayStartHour = savedData.startHour || startHour;
+            timetableRows = savedData.rows || [];
+        }
 
-        timetableData.forEach((rowData) => {
+        console.log('Processing date:', dateStr, 'startHour:', dayStartHour, 'rows:', timetableRows.length);
+
+        let currentTimeMinutes = dayStartHour * 60;
+
+        timetableRows.forEach((rowData) => {
             const durationHours = parseFloat(rowData.duration) || 0;
             const durationMinutes = durationHours * 60;
             const task = rowData.task || '';
+            const comment = rowData.comment || '';
 
-            // Get category label
             let categoryLabel = '';
             if (rowData.category) {
-                const allCategories = [...presetCategories, ...customCategories];
+                const allCategories = [...PRESET_CATEGORIES, ...customCategories];
                 const category = allCategories.find(cat => cat.value === rowData.category);
                 categoryLabel = category ? category.label : rowData.category;
             }
 
-            // Calculate end time
             const endTimeMinutes = currentTimeMinutes + durationMinutes;
-
-            // Convert to Excel time format (decimal fraction of a day)
             const startTimeExcel = (currentTimeMinutes % (24 * 60)) / (24 * 60);
             const endTimeExcel = (endTimeMinutes % (24 * 60)) / (24 * 60);
 
-            // Convert date to Excel date format
             const [year, month, day] = dateStr.split('-').map(Number);
             const excelDate = new Date(year, month - 1, day);
             const excelDateSerial = (excelDate.getTime() - new Date(1900, 0, 1).getTime()) / (24 * 60 * 60 * 1000) + 2;
 
-            excelData.push([
+            timetableExcelData.push([
                 excelDateSerial,
                 startTimeExcel,
                 endTimeExcel,
                 durationHours.toFixed(2),
                 task,
                 categoryLabel,
-                rowData.isBuffer || false
+                comment
             ]);
 
             currentTimeMinutes = endTimeMinutes;
         });
     });
 
-    // Create workbook and worksheet
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(excelData);
-
-    // Set column widths and formats
-    worksheet['!cols'] = [
-        { width: 12 }, // Date
-        { width: 12 }, // Start Time
-        { width: 12 }, // End Time
-        { width: 15 }, // Duration
-        { width: 30 }, // Task
-        { width: 15 }  // Category
+    const timetableSheet = XLSX.utils.aoa_to_sheet(timetableExcelData);
+    timetableSheet['!cols'] = [
+        { width: 12 }, { width: 12 }, { width: 12 }, { width: 15 },
+        { width: 30 }, { width: 15 }, { width: 30 }
     ];
 
-    // Apply Excel formatting to date and time columns
-    const range = XLSX.utils.decode_range(worksheet['!ref']);
-    for (let row = 1; row <= range.e.r; row++) { // Skip header row
-        // Date column (A) - Excel date format
+    // Apply date/time formatting
+    const range = XLSX.utils.decode_range(timetableSheet['!ref']);
+    for (let row = 1; row <= range.e.r; row++) {
         const dateCell = XLSX.utils.encode_cell({ r: row, c: 0 });
-        if (worksheet[dateCell]) {
-            worksheet[dateCell].z = 'yyyy-mm-dd';
-        }
+        if (timetableSheet[dateCell]) timetableSheet[dateCell].z = 'yyyy-mm-dd';
 
-        // Start Time column (B) - Excel time format
         const startTimeCell = XLSX.utils.encode_cell({ r: row, c: 1 });
-        if (worksheet[startTimeCell]) {
-            worksheet[startTimeCell].z = 'hh:mm';
-        }
+        if (timetableSheet[startTimeCell]) timetableSheet[startTimeCell].z = 'hh:mm';
 
-        // End Time column (C) - Excel time format
         const endTimeCell = XLSX.utils.encode_cell({ r: row, c: 2 });
-        if (worksheet[endTimeCell]) {
-            worksheet[endTimeCell].z = 'hh:mm';
-        }
+        if (timetableSheet[endTimeCell]) timetableSheet[endTimeCell].z = 'hh:mm';
     }
 
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Timetable');
+    XLSX.utils.book_append_sheet(workbook, timetableSheet, 'Timetable');
 
-    // Generate filename with current date
+    // Sheet 2: Diary (always created)
+    const diaryData = [['Date', 'Entry']];
+    Object.keys(appState.savedData).forEach(dateStr => {
+        if (appState.savedData[dateStr]?.diary) {
+            diaryData.push([dateStr, appState.savedData[dateStr].diary]);
+        }
+    });
+    const diarySheet = XLSX.utils.aoa_to_sheet(diaryData);
+    diarySheet['!cols'] = [{ width: 12 }, { width: 80 }];
+    XLSX.utils.book_append_sheet(workbook, diarySheet, 'Diary');
+
+    // Sheet 3: Calories (always created)
+    const caloriesData = [['Date', 'Food Item', 'Type', 'Class', 'Calories (kcal)', 'Comment']];
+    Object.keys(appState.savedData).forEach(dateStr => {
+        const foods = appState.savedData[dateStr]?.calories;
+        // Handle new array format (multiple food items)
+        if (Array.isArray(foods)) {
+            foods.forEach(food => {
+                if (food.item || food.calories) {
+                    caloriesData.push([
+                        dateStr,
+                        food.item || '',
+                        food.type || '',
+                        food.foodClass || '',
+                        food.calories || 0,
+                        food.comment || ''
+                    ]);
+                }
+            });
+        }
+        // Handle old format (single intake/weight) for backward compatibility
+        else if (foods && (foods.intake || foods.weight)) {
+            caloriesData.push([
+                dateStr,
+                'Daily Total (old format)',
+                '',
+                '',
+                foods.intake || 0,
+                foods.comment || ''
+            ]);
+        }
+    });
+    const caloriesSheet = XLSX.utils.aoa_to_sheet(caloriesData);
+    caloriesSheet['!cols'] = [{ width: 12 }, { width: 25 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 30 }];
+    XLSX.utils.book_append_sheet(workbook, caloriesSheet, 'Calories');
+
+    // Sheet 4: Fitness (always created) - with Steps and Distance
+    const fitnessData = [['Date', 'Exercise', 'Sets', 'Reps', 'Weight (kg)', 'Body Wt (kg)', 'Steps', 'Distance (km)', 'Burnt (kcal)', 'Comment']];
+    Object.keys(appState.savedData).forEach(dateStr => {
+        const exercises = appState.savedData[dateStr]?.fitness || [];
+        exercises.forEach(ex => {
+            if (ex.exercise || ex.sets || ex.reps || ex.caloriesBurnt || ex.steps || ex.distance) {
+                fitnessData.push([
+                    dateStr,
+                    ex.exercise || '',
+                    ex.sets || 0,
+                    ex.reps || 0,
+                    ex.weight || 0,
+                    ex.bodyWeight || '',
+                    ex.steps || 0,
+                    ex.distance || 0,
+                    ex.caloriesBurnt || 0,
+                    ex.comment || ''
+                ]);
+            }
+        });
+    });
+    const fitnessSheet = XLSX.utils.aoa_to_sheet(fitnessData);
+    fitnessSheet['!cols'] = [{ width: 12 }, { width: 20 }, { width: 6 }, { width: 6 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 25 }];
+    XLSX.utils.book_append_sheet(workbook, fitnessSheet, 'Fitness');
+
+    // Save file
     const today = new Date();
     const todayStr = formatDateForStorage(today.getFullYear(), today.getMonth(), today.getDate());
     const filename = `Timetable_All_Days_${todayStr}.xlsx`;
 
-    // Save file
     XLSX.writeFile(workbook, filename);
-
-    alert(`Timetable exported to ${filename}`);
+    console.log(`Exported to ${filename}`);
 }
 
 function importFromExcel(event) {
@@ -1190,36 +2329,17 @@ function importFromExcel(event) {
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            // Parse Excel file
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
 
-            // Get first worksheet
-            const worksheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[worksheetName];
-
-            // Convert to array of arrays
-            const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-            if (excelData.length < 2) {
-                alert('Invalid Excel format: No data rows found');
-                return;
-            }
-
-            // Helper function to convert Excel date to our format
+            // Helper function for date parsing
             function parseExcelDate(value) {
                 if (typeof value === 'number') {
-                    // Excel date serial number
                     const excelEpoch = new Date(1900, 0, 1);
                     const date = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
                     return formatDateForStorage(date.getFullYear(), date.getMonth(), date.getDate());
                 } else if (typeof value === 'string') {
-                    // Try to parse string date
-                    if (value.includes('-') && value.length >= 8) {
-                        // Format like "2024-09-27"
-                        return value;
-                    }
-                    // Try to parse other date formats
+                    if (value.includes('-') && value.length >= 8) return value;
                     const date = new Date(value);
                     if (!isNaN(date.getTime())) {
                         return formatDateForStorage(date.getFullYear(), date.getMonth(), date.getDate());
@@ -1228,139 +2348,264 @@ function importFromExcel(event) {
                 return null;
             }
 
-            // Group data by date
-            const dataByDate = {};
-            const importedDates = new Set();
+            // Import Timetable sheet
+            if (workbook.SheetNames.includes('Timetable')) {
+                const worksheet = workbook.Sheets['Timetable'];
+                const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-            // Process data rows (skip header)
-            const dataRows = excelData.slice(1);
+                if (excelData.length >= 2) {
+                    const dataByDate = {};
 
-            dataRows.forEach((rowData) => {
-                if (rowData.length >= 7) { // Need all columns: Date, Start, End, Duration, Task, Category, Is Buffer
-                    const dateStr = parseExcelDate(rowData[0]);
-                    if (dateStr) {
-                        if (!dataByDate[dateStr]) {
-                            dataByDate[dateStr] = [];
-                        }
+                    excelData.slice(1).forEach((rowData) => {
+                        if (rowData.length >= 7) {
+                            const dateStr = parseExcelDate(rowData[0]);
+                            if (dateStr) {
+                                if (!dataByDate[dateStr]) dataByDate[dateStr] = [];
 
-                        // Get category value from label
-                        const categoryLabel = rowData[5] || '';
-                        let categoryValue = '';
-                        if (categoryLabel) {
-                            const allCategories = [...presetCategories, ...customCategories];
-                            const category = allCategories.find(cat =>
-                                cat.label === categoryLabel ||
-                                cat.label.toLowerCase().includes(categoryLabel.toLowerCase())
-                            );
-
-                            if (category) {
-                                categoryValue = category.value;
-                            } else {
-                                // Add as custom category if new
-                                const customValue = categoryLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                if (customValue && !customCategories.some(cat => cat.value === customValue)) {
-                                    customCategories.push({
-                                        value: customValue,
-                                        label: categoryLabel,
-                                        color: "#666666"
-                                    });
-                                    saveCustomCategories();
+                                const categoryLabel = rowData[5] || '';
+                                let categoryValue = '';
+                                if (categoryLabel) {
+                                    const allCategories = [...PRESET_CATEGORIES, ...customCategories];
+                                    const category = allCategories.find(cat =>
+                                        cat.label === categoryLabel ||
+                                        cat.label.toLowerCase().includes(categoryLabel.toLowerCase())
+                                    );
+                                    categoryValue = category ? category.value : categoryLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
                                 }
-                                categoryValue = customValue;
+
+                                const hasNewFormat = rowData.length >= 10;
+                                const isBuffer = rowData[7] === true || rowData[7] === 'true' || rowData[7] === 'TRUE';
+                                const rowType = hasNewFormat ? (rowData[8] || '') : '';
+                                const position = hasNewFormat ? (parseInt(rowData[9]) || 0) : 0;
+
+                                dataByDate[dateStr].push({
+                                    duration: (parseFloat(rowData[3]) || 0).toFixed(2),
+                                    task: rowData[4] || '',
+                                    category: categoryValue,
+                                    comment: rowData[6] || '',
+                                    isBuffer: isBuffer,
+                                    rowType: rowType,
+                                    position: position
+                                });
                             }
                         }
+                    });
 
-                        // Get buffer status from Excel
-                        const isBuffer = rowData[6] === true || rowData[6] === 'true' || rowData[6] === 'TRUE';
+                    // Process and save timetables
+                    Object.keys(dataByDate).forEach(dateStr => {
+                        const importedRows = dataByDate[dateStr];
+                        importedRows.sort((a, b) => a.position - b.position);
 
-                        dataByDate[dateStr].push({
-                            duration: (parseFloat(rowData[3]) || 0).toFixed(2),
-                            task: rowData[4] || '',
-                            category: categoryValue,
-                            isBuffer: isBuffer
+                        const properTimetable = [];
+                        let currentRowId = 0;
+
+                        let startRow = importedRows.find(row => row.rowType === 'start');
+                        let endRow = importedRows.find(row => row.rowType === 'end');
+                        let bufferRow = importedRows.find(row => row.rowType === 'buffer' || row.isBuffer);
+                        let activityRows = importedRows.filter(row =>
+                            row.rowType === 'activity' ||
+                            (row.rowType === '' && !row.isBuffer && row !== startRow && row !== endRow)
+                        );
+
+                        // Fallback identification
+                        if (!startRow && !endRow && !bufferRow) {
+                            startRow = importedRows.find(row => row.task.toLowerCase().includes('start'));
+                            endRow = importedRows.find(row => row.task.toLowerCase().includes('end'));
+                            bufferRow = importedRows.find(row =>
+                                row.isBuffer || row.task.toLowerCase().includes('sleep') ||
+                                row.task.toLowerCase().includes('buffer')
+                            );
+                            activityRows = importedRows.filter(row =>
+                                row !== startRow && row !== endRow && row !== bufferRow
+                            );
+                        }
+
+                        // Build timetable
+                        properTimetable.push({
+                            id: currentRowId++,
+                            duration: CONFIG.FIXED_ROW_DURATION.toFixed(2),
+                            task: startRow?.task || 'Start',
+                            category: startRow?.category || '',
+                            comment: startRow?.comment || '',
+                            isBuffer: false
                         });
 
-                        importedDates.add(dateStr);
-                    }
-                }
-            });
+                        activityRows.forEach(row => {
+                            properTimetable.push({
+                                id: currentRowId++,
+                                duration: row.duration,
+                                task: row.task,
+                                category: row.category,
+                                comment: row.comment || '',
+                                isBuffer: false
+                            });
+                        });
 
-            // Process ALL dates from Excel and save them
-            Object.keys(dataByDate).forEach(dateStr => {
-                const importedRows = dataByDate[dateStr];
+                        properTimetable.push({
+                            id: currentRowId++,
+                            duration: bufferRow?.duration || (23 + 59/60).toFixed(2),
+                            task: bufferRow?.task || 'Sleep',
+                            category: bufferRow?.category || 'sleeping',
+                            comment: bufferRow?.comment || '',
+                            isBuffer: true
+                        });
 
-                // Filter out ONLY Start and Day End rows - keep everything else AS-IS from Excel
-                const activityRows = importedRows.filter(row =>
-                    row.task !== 'Start' && row.task !== 'Day End'
-                );
+                        properTimetable.push({
+                            id: currentRowId++,
+                            duration: CONFIG.FIXED_ROW_DURATION.toFixed(2),
+                            task: endRow?.task || 'Day End',
+                            category: endRow?.category || '',
+                            comment: endRow?.comment || '',
+                            isBuffer: false
+                        });
 
-                // Build timetable structure preserving Excel format exactly
-                const properTimetable = [];
-                let currentRowId = 0;
-
-                // 1. Always start with "Start" row (1 minute)
-                properTimetable.push({
-                    id: currentRowId++,
-                    duration: (1/60).toFixed(2), // 0.02 hours (1 minute)
-                    task: 'Start',
-                    category: '',
-                    isBuffer: false
-                });
-
-                // 2. Add ALL rows from Excel (including buffers) with proper IDs and buffer flags
-                activityRows.forEach(row => {
-                    properTimetable.push({
-                        id: currentRowId++,
-                        duration: row.duration,
-                        task: row.task,
-                        category: row.category,
-                        isBuffer: row.isBuffer || false
+                        savedTimetables[dateStr] = properTimetable;
+                        if (!loggedDays.includes(dateStr)) loggedDays.push(dateStr);
                     });
-                });
-
-                // 3. Always end with "Day End" row (1 minute)
-                properTimetable.push({
-                    id: currentRowId++,
-                    duration: (1/60).toFixed(2), // 0.02 hours (1 minute)
-                    task: 'Day End',
-                    category: '',
-                    isBuffer: false
-                });
-
-                // Save the properly structured timetable
-                savedTimetables[dateStr] = properTimetable;
-
-                // Add to loggedDays if not already there
-                if (!loggedDays.includes(dateStr)) {
-                    loggedDays.push(dateStr);
                 }
-            });
+            }
 
-            // Load current selected date's data if it was imported
-            const currentDateStr = formatDateForStorage(currentYear, months.indexOf(monthName), selectedDay);
+            // Import Diary sheet
+            if (workbook.SheetNames.includes('Diary')) {
+                const diarySheet = workbook.Sheets['Diary'];
+                const diaryData = XLSX.utils.sheet_to_json(diarySheet, { header: 1 });
+
+                diaryData.slice(1).forEach(row => {
+                    if (row[0] && row[1]) {
+                        const dateStr = parseExcelDate(row[0]) || row[0];
+                        if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
+                        appState.savedData[dateStr].diary = row[1];
+                    }
+                });
+            }
+
+            // Import Calories sheet (new format: Date, Food Item, Type, Class, Calories, Comment)
+            if (workbook.SheetNames.includes('Calories')) {
+                const caloriesSheet = workbook.Sheets['Calories'];
+                const caloriesData = XLSX.utils.sheet_to_json(caloriesSheet, { header: 1 });
+
+                const caloriesByDate = {};
+                caloriesData.slice(1).forEach(row => {
+                    if (row[0]) {
+                        const dateStr = parseExcelDate(row[0]) || row[0];
+                        if (!caloriesByDate[dateStr]) caloriesByDate[dateStr] = [];
+                        caloriesByDate[dateStr].push({
+                            item: row[1] || '',
+                            type: row[2] || '',
+                            foodClass: row[3] || '',
+                            calories: parseInt(row[4]) || 0,
+                            comment: row[5] || ''
+                        });
+                    }
+                });
+
+                Object.keys(caloriesByDate).forEach(dateStr => {
+                    if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
+                    appState.savedData[dateStr].calories = caloriesByDate[dateStr];
+                });
+            }
+            // Fallback: Import old Calories_Weight sheet format
+            else if (workbook.SheetNames.includes('Calories_Weight')) {
+                const caloriesSheet = workbook.Sheets['Calories_Weight'];
+                const caloriesData = XLSX.utils.sheet_to_json(caloriesSheet, { header: 1 });
+
+                caloriesData.slice(1).forEach(row => {
+                    if (row[0]) {
+                        const dateStr = parseExcelDate(row[0]) || row[0];
+                        if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
+                        // Convert old format to new array format
+                        appState.savedData[dateStr].calories = [{
+                            item: 'Daily Total (imported)',
+                            type: '',
+                            foodClass: '',
+                            calories: parseInt(row[1]) || 0,
+                            comment: row[3] || ''
+                        }];
+                    }
+                });
+            }
+
+            // Import Fitness sheet (new format: Date, Exercise, Sets, Reps, Weight, Body Weight, Calories Burnt, Comment)
+            if (workbook.SheetNames.includes('Fitness')) {
+                const fitnessSheet = workbook.Sheets['Fitness'];
+                const fitnessData = XLSX.utils.sheet_to_json(fitnessSheet, { header: 1 });
+
+                // Check if it's new format (8 columns) or old format (6 columns)
+                const headerRow = fitnessData[0] || [];
+                const isNewFormat = headerRow.length >= 8 || headerRow.includes('Body Weight (kg)') || headerRow.includes('Calories Burnt');
+
+                const fitnessByDate = {};
+                fitnessData.slice(1).forEach(row => {
+                    if (row[0]) {
+                        const dateStr = parseExcelDate(row[0]) || row[0];
+                        if (!fitnessByDate[dateStr]) fitnessByDate[dateStr] = [];
+
+                        if (isNewFormat) {
+                            // New format: Date, Exercise, Sets, Reps, Weight, Body Weight, Calories Burnt, Comment
+                            fitnessByDate[dateStr].push({
+                                exercise: row[1] || '',
+                                sets: parseInt(row[2]) || 0,
+                                reps: parseInt(row[3]) || 0,
+                                weight: parseFloat(row[4]) || 0,
+                                bodyWeight: parseFloat(row[5]) || 0,
+                                caloriesBurnt: parseInt(row[6]) || 0,
+                                comment: row[7] || ''
+                            });
+                        } else {
+                            // Old format: Date, Exercise, Sets, Reps, Weight, Comment
+                            fitnessByDate[dateStr].push({
+                                exercise: row[1] || '',
+                                sets: parseInt(row[2]) || 0,
+                                reps: parseInt(row[3]) || 0,
+                                weight: parseFloat(row[4]) || 0,
+                                bodyWeight: 0,
+                                caloriesBurnt: 0,
+                                comment: row[5] || ''
+                            });
+                        }
+                    }
+                });
+
+                Object.keys(fitnessByDate).forEach(dateStr => {
+                    if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
+                    appState.savedData[dateStr].fitness = fitnessByDate[dateStr];
+                });
+            }
+
+            // Reload current date
+            const currentDateStr = getCurrentDateStr();
             if (savedTimetables[currentDateStr]) {
                 const tbody = document.getElementById('timetableBody');
                 tbody.innerHTML = '';
-                loadTimetableData(savedTimetables[currentDateStr]);
+                const savedData = savedTimetables[currentDateStr];
+                // Handle both old format (array) and new format (object with startHour and rows)
+                if (Array.isArray(savedData)) {
+                    loadTimetableData(savedData);
+                } else {
+                    if (savedData.startHour !== undefined) {
+                        startHour = savedData.startHour;
+                        document.getElementById('startTimeSelect').value = startHour;
+                    }
+                    loadTimetableData(savedData.rows || []);
+                }
             }
 
-            alert(`Successfully imported ${Object.keys(dataByDate).length} days of timetable data. Calendar dates have been marked green.`);
-
-            // Save to localStorage
-            localStorage.setItem('savedTimetables', JSON.stringify(savedTimetables));
-            localStorage.setItem('loggedDays', JSON.stringify(loggedDays));
-
-            // Refresh calendar to show green dates
+            loadAllTabsForDate();
+            saveData();
             generateCalendars();
+
+            alert('Successfully imported data from Excel!');
 
         } catch (error) {
             console.error('Error importing Excel file:', error);
             alert('Error importing Excel file. Please check the format and try again.');
         }
 
-        // Reset file input
         event.target.value = '';
     };
 
     reader.readAsArrayBuffer(file);
 }
+
+// Keep presetCategories as alias for backward compatibility
+const presetCategories = PRESET_CATEGORIES;
