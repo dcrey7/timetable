@@ -62,29 +62,36 @@ body {
 .header-left {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-width: 200px;
+    gap: 6px;
+    min-width: 240px;
 }
 
 .header-datetime {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     color: #1d1d1f;
+    letter-spacing: -0.3px;
 }
 
 .header-working {
-    font-size: 12px;
+    font-size: 13px;
     color: #86868b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .header-working span {
-    color: #ff3b30;
+    color: #007aff;
     font-weight: 600;
 }
 
 .header-location {
-    font-size: 11px;
-    color: #86868b;
+    font-size: 12px;
+    color: #6e6e73;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 /* Center section - Tabs + Quote */
@@ -880,7 +887,7 @@ body {
 .timetable th {
     background: #f5f5f7;
     padding: 8px 6px;
-    text-align: left;
+    text-align: center;
     border-bottom: 2px solid #e5e5e5;
     font-size: 11px;
     font-weight: 700;
@@ -910,6 +917,7 @@ body {
     width: 90px;
     white-space: nowrap;
     color: #1d1d1f;
+    text-align: center;
 }
 
 .timetable input {
@@ -1305,29 +1313,26 @@ body {
 .diary-container {
     width: 100%;
     max-width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
-.diary-container h3 {
-    margin-bottom: 10px;
-    color: #1d1d1f;
-    font-weight: 700;
-}
-
+.diary-container h3,
 .diary-hint {
-    color: #86868b;
-    font-size: 14px;
-    margin-bottom: 15px;
+    display: none;
 }
 
 #diaryContent {
     width: 100%;
-    min-height: 350px;
-    padding: 15px;
+    flex: 1;
+    min-height: 400px;
+    padding: 20px;
     border: 2px solid #e5e5e5;
     border-radius: 12px;
     font-size: 15px;
     line-height: 1.6;
-    resize: vertical;
+    resize: none;
     font-family: inherit;
 }
 
@@ -1529,12 +1534,19 @@ body.dark-mode .header-bar {
 }
 
 body.dark-mode .header-datetime {
-    color: #e5e5e5;
+    color: #ffffff;
 }
 
-body.dark-mode .header-working,
+body.dark-mode .header-working {
+    color: #aaa;
+}
+
+body.dark-mode .header-working span {
+    color: #5ac8fa;
+}
+
 body.dark-mode .header-location {
-    color: #888;
+    color: #999;
 }
 
 body.dark-mode .tab-btn {
@@ -1921,4 +1933,312 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
 
 body.dark-mode * {
     scrollbar-color: #555 transparent;
+}
+
+/* =============================================================================
+   LOAD TEMPLATE BUTTON - Purple Theme
+   ============================================================================= */
+.btn-template {
+    background: #9b59b6;
+    color: white;
+    box-shadow: 0 4px 0 #7d3c98, 0 6px 10px rgba(0,0,0,0.15);
+}
+
+.btn-template:hover {
+    background: #a569bd;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 #7d3c98, 0 8px 15px rgba(0,0,0,0.2);
+}
+
+.btn-template:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 #7d3c98, 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* =============================================================================
+   TEMPLATE MODAL
+   ============================================================================= */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-content h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1d1d1f;
+}
+
+.modal-content .template-day-info {
+    color: #9b59b6;
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.template-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.template-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 15px;
+    background: #f5f5f7;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.template-checkbox:hover {
+    background: #e8e8ed;
+}
+
+.template-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #9b59b6;
+    cursor: pointer;
+}
+
+.template-checkbox label {
+    font-weight: 600;
+    font-size: 15px;
+    color: #1d1d1f;
+    cursor: pointer;
+    flex: 1;
+}
+
+.template-checkbox .template-desc {
+    font-size: 12px;
+    color: #86868b;
+    font-weight: 400;
+}
+
+.modal-warning {
+    background: #fff3cd;
+    color: #856404;
+    padding: 12px 15px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-warning::before {
+    content: "⚠️";
+    font-size: 16px;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.modal-buttons .btn {
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+/* Dark mode modal styles */
+body.dark-mode .modal-content {
+    background: #2a2a2a;
+}
+
+body.dark-mode .modal-content h3 {
+    color: #e5e5e5;
+}
+
+body.dark-mode .template-checkbox {
+    background: #333;
+}
+
+body.dark-mode .template-checkbox:hover {
+    background: #3a3a3a;
+}
+
+body.dark-mode .template-checkbox label {
+    color: #e5e5e5;
+}
+
+body.dark-mode .template-checkbox .template-desc {
+    color: #aaa;
+}
+
+body.dark-mode .modal-warning {
+    background: #4a3f00;
+    color: #ffc107;
+}
+
+/* =============================================================================
+   DIET TABLE COLUMN WIDTHS (9 columns)
+   ============================================================================= */
+/* Food Item */
+.diet-container .timetable th:nth-child(1),
+.diet-container .timetable td:nth-child(1) {
+    width: 130px;
+    min-width: 110px;
+}
+
+/* Portion (g) */
+.diet-container .timetable th:nth-child(2),
+.diet-container .timetable td:nth-child(2) {
+    width: 70px;
+    min-width: 60px;
+}
+
+/* Type */
+.diet-container .timetable th:nth-child(3),
+.diet-container .timetable td:nth-child(3) {
+    width: 90px;
+    min-width: 80px;
+}
+
+/* Protein */
+.diet-container .timetable th:nth-child(4),
+.diet-container .timetable td:nth-child(4) {
+    width: 65px;
+    min-width: 55px;
+}
+
+/* Carbs */
+.diet-container .timetable th:nth-child(5),
+.diet-container .timetable td:nth-child(5) {
+    width: 65px;
+    min-width: 55px;
+}
+
+/* Fat */
+.diet-container .timetable th:nth-child(6),
+.diet-container .timetable td:nth-child(6) {
+    width: 55px;
+    min-width: 45px;
+}
+
+/* Calories */
+.diet-container .timetable th:nth-child(7),
+.diet-container .timetable td:nth-child(7) {
+    width: 60px;
+    min-width: 50px;
+}
+
+/* Comment */
+.diet-container .timetable th:nth-child(8),
+.diet-container .timetable td:nth-child(8) {
+    width: 100px;
+    min-width: 80px;
+}
+
+/* Actions */
+.diet-container .timetable th:nth-child(9),
+.diet-container .timetable td:nth-child(9) {
+    width: 65px;
+    min-width: 60px;
+}
+
+/* Centered text for diet table */
+.diet-container .timetable th,
+.diet-container .timetable td {
+    text-align: center;
+}
+
+.diet-container .timetable input[type="text"] {
+    text-align: left;
+}
+
+/* =============================================================================
+   UPDATED FITNESS TABLE COLUMN WIDTHS (8 columns)
+   ============================================================================= */
+/* Exercise */
+.fitness-container .timetable th:nth-child(1),
+.fitness-container .timetable td:nth-child(1) {
+    width: 130px;
+    min-width: 110px;
+}
+
+/* Sets */
+.fitness-container .timetable th:nth-child(2),
+.fitness-container .timetable td:nth-child(2) {
+    width: 55px;
+    min-width: 45px;
+}
+
+/* Reps */
+.fitness-container .timetable th:nth-child(3),
+.fitness-container .timetable td:nth-child(3) {
+    width: 55px;
+    min-width: 45px;
+}
+
+/* kg */
+.fitness-container .timetable th:nth-child(4),
+.fitness-container .timetable td:nth-child(4) {
+    width: 60px;
+    min-width: 50px;
+}
+
+/* Duration */
+.fitness-container .timetable th:nth-child(5),
+.fitness-container .timetable td:nth-child(5) {
+    width: 70px;
+    min-width: 60px;
+}
+
+/* Burnt */
+.fitness-container .timetable th:nth-child(6),
+.fitness-container .timetable td:nth-child(6) {
+    width: 65px;
+    min-width: 55px;
+}
+
+/* Comment */
+.fitness-container .timetable th:nth-child(7),
+.fitness-container .timetable td:nth-child(7) {
+    width: 100px;
+    min-width: 80px;
+}
+
+/* Actions */
+.fitness-container .timetable th:nth-child(8),
+.fitness-container .timetable td:nth-child(8) {
+    width: 65px;
+    min-width: 60px;
 }

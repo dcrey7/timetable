@@ -21,7 +21,8 @@ const PRESET_CATEGORIES = [
     { value: "working", label: "Working", color: "#D0021B" },
     { value: "chilling", label: "Chilling", color: "#7ED321" },
     { value: "exercise", label: "Exercise", color: "#BD10E0" },
-    { value: "learning", label: "Learning", color: "#50E3C2" }
+    { value: "learning", label: "Learning", color: "#50E3C2" },
+    { value: "personal", label: "Personal", color: "#9B59B6" }
 ];
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -428,6 +429,9 @@ function setupEventListeners() {
 
     // Log day button
     document.getElementById('logDayBtn').addEventListener('click', logDay);
+
+    // Load template button
+    document.getElementById('loadTemplateBtn').addEventListener('click', showLoadTemplateModal);
 
     // Excel export/import buttons
     document.getElementById('exportExcelBtn').addEventListener('click', exportToExcel);
@@ -1488,10 +1492,8 @@ function addFitnessRow(afterRow = null) {
         <td><input type="text" class="exercise-name" placeholder="Exercise"></td>
         <td><input type="number" class="sets" min="0" placeholder="0"></td>
         <td><input type="number" class="reps" min="0" placeholder="0"></td>
-        <td><input type="number" class="weight-lifted" min="0" step="0.5" placeholder="0"></td>
-        <td><input type="number" class="body-weight" min="0" step="0.1" placeholder="kg"></td>
-        <td><input type="number" class="steps" min="0" placeholder="0"></td>
-        <td><input type="number" class="distance" min="0" step="0.01" placeholder="0"></td>
+        <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0"></td>
+        <td><input type="number" class="duration-min" min="0" placeholder="0"></td>
         <td><input type="number" class="calories-burnt" min="0" placeholder="0"></td>
         <td><input type="text" class="exercise-comment" placeholder="Notes"></td>
         <td class="actions">
@@ -1547,10 +1549,8 @@ function saveFitness() {
             exercise: row.querySelector('.exercise-name')?.value || '',
             sets: parseInt(row.querySelector('.sets')?.value) || 0,
             reps: parseInt(row.querySelector('.reps')?.value) || 0,
-            weight: parseFloat(row.querySelector('.weight-lifted')?.value) || 0,
-            bodyWeight: parseFloat(row.querySelector('.body-weight')?.value) || 0,
-            steps: parseInt(row.querySelector('.steps')?.value) || 0,
-            distance: parseFloat(row.querySelector('.distance')?.value) || 0,
+            kg: parseFloat(row.querySelector('.weight-kg')?.value) || 0,
+            duration: parseInt(row.querySelector('.duration-min')?.value) || 0,
             caloriesBurnt: parseInt(row.querySelector('.calories-burnt')?.value) || 0,
             comment: row.querySelector('.exercise-comment')?.value || ''
         });
@@ -1580,14 +1580,14 @@ function loadFitness() {
 
     exercises.forEach(ex => {
         const row = document.createElement('tr');
+        // Support both old 'weight' key and new 'kg' key for backward compatibility
+        const kgValue = ex.kg || ex.weight || '';
         row.innerHTML = `
             <td><input type="text" class="exercise-name" placeholder="Exercise" value="${ex.exercise || ''}"></td>
             <td><input type="number" class="sets" min="0" placeholder="0" value="${ex.sets || ''}"></td>
             <td><input type="number" class="reps" min="0" placeholder="0" value="${ex.reps || ''}"></td>
-            <td><input type="number" class="weight-lifted" min="0" step="0.5" placeholder="0" value="${ex.weight || ''}"></td>
-            <td><input type="number" class="body-weight" min="0" step="0.1" placeholder="kg" value="${ex.bodyWeight || ''}"></td>
-            <td><input type="number" class="steps" min="0" placeholder="0" value="${ex.steps || ''}"></td>
-            <td><input type="number" class="distance" min="0" step="0.01" placeholder="0" value="${ex.distance || ''}"></td>
+            <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0" value="${kgValue}"></td>
+            <td><input type="number" class="duration-min" min="0" placeholder="0" value="${ex.duration || ''}"></td>
             <td><input type="number" class="calories-burnt" min="0" placeholder="0" value="${ex.caloriesBurnt || ''}"></td>
             <td><input type="text" class="exercise-comment" placeholder="Notes" value="${ex.comment || ''}"></td>
             <td class="actions">
@@ -1611,39 +1611,17 @@ function loadFitness() {
 
 function updateFitnessStats() {
     const rows = document.querySelectorAll('#fitnessBody tr');
-    const bodyWeights = [];
+    let totalDuration = 0;
     let totalCaloriesBurnt = 0;
-    let totalSteps = 0;
-    let totalDistance = 0;
 
     rows.forEach(row => {
-        const bw = parseFloat(row.querySelector('.body-weight')?.value);
-        if (bw > 0) {
-            bodyWeights.push(bw);
-        }
+        totalDuration += parseInt(row.querySelector('.duration-min')?.value) || 0;
         totalCaloriesBurnt += parseInt(row.querySelector('.calories-burnt')?.value) || 0;
-        totalSteps += parseInt(row.querySelector('.steps')?.value) || 0;
-        totalDistance += parseFloat(row.querySelector('.distance')?.value) || 0;
     });
 
-    const avgEl = document.getElementById('avgBodyWeight');
-    if (avgEl) {
-        if (bodyWeights.length > 0) {
-            const avg = bodyWeights.reduce((a, b) => a + b, 0) / bodyWeights.length;
-            avgEl.innerHTML = `<strong>${avg.toFixed(1)} kg</strong>`;
-        } else {
-            avgEl.innerHTML = '<strong>--</strong>';
-        }
-    }
-
-    const stepsEl = document.getElementById('totalSteps');
-    if (stepsEl) {
-        stepsEl.innerHTML = `<strong>${totalSteps.toLocaleString()}</strong>`;
-    }
-
-    const distanceEl = document.getElementById('totalDistance');
-    if (distanceEl) {
-        distanceEl.innerHTML = `<strong>${totalDistance.toFixed(2)} km</strong>`;
+    const durationEl = document.getElementById('totalDurationFitness');
+    if (durationEl) {
+        durationEl.innerHTML = `<strong>${totalDuration} min</strong>`;
     }
 
     const caloriesEl = document.getElementById('totalCaloriesBurnt');
@@ -1670,52 +1648,47 @@ function clearFitnessTable() {
 }
 
 // =============================================================================
-// CALORIE TRACKING MODULE
+// DIET TRACKING MODULE (renamed from Calories)
 // =============================================================================
 
-function addCalorieRow(afterRow = null) {
-    const tbody = document.getElementById('caloriesBody');
+function addDietRow(afterRow = null) {
+    const tbody = document.getElementById('dietBody');
     if (!tbody) return;
 
     const row = document.createElement('tr');
     row.innerHTML = `
         <td><input type="text" class="food-item" placeholder="Food item"></td>
+        <td><input type="number" class="food-portion" min="0" placeholder="g"></td>
         <td>
             <select class="food-type">
-                <option value="">Select</option>
+                <option value="">-</option>
                 <option value="food">Food</option>
-                <option value="ingredient">Ingredient</option>
                 <option value="drink">Drink</option>
                 <option value="snack">Snack</option>
+                <option value="supplement">Supplement</option>
+                <option value="meal">Meal</option>
             </select>
         </td>
-        <td>
-            <select class="food-class">
-                <option value="">Select</option>
-                <option value="protein">Protein</option>
-                <option value="carbs">Carbs</option>
-                <option value="fat">Fat</option>
-                <option value="fiber">Fiber</option>
-                <option value="mixed">Mixed</option>
-            </select>
-        </td>
+        <td><input type="number" class="food-protein" min="0" placeholder="0"></td>
+        <td><input type="number" class="food-carbs" min="0" placeholder="0"></td>
+        <td><input type="number" class="food-fat" min="0" placeholder="0"></td>
         <td><input type="number" class="food-calories" min="0" placeholder="0"></td>
         <td><input type="text" class="food-comment" placeholder="Notes"></td>
         <td class="actions">
-            <button class="add-btn" onclick="addCalorieRow(this.closest('tr'))">+</button>
-            <button class="delete-btn" onclick="deleteCalorieRow(this)">-</button>
+            <button class="add-btn" onclick="addDietRow(this.closest('tr'))">+</button>
+            <button class="delete-btn" onclick="deleteDietRow(this)">-</button>
         </td>
     `;
 
     // Auto-save on input/change
     row.querySelectorAll('input, select').forEach(el => {
         el.addEventListener('input', () => {
-            saveCalories();
-            updateCalorieStats();
+            saveDiet();
+            updateDietStats();
         });
         el.addEventListener('change', () => {
-            saveCalories();
-            updateCalorieStats();
+            saveDiet();
+            updateDietStats();
         });
     });
 
@@ -1725,12 +1698,12 @@ function addCalorieRow(afterRow = null) {
         tbody.appendChild(row);
     }
 
-    saveCalories();
-    updateCalorieStats();
+    saveDiet();
+    updateDietStats();
 }
 
-function deleteCalorieRow(btn) {
-    const tbody = document.getElementById('caloriesBody');
+function deleteDietRow(btn) {
+    const tbody = document.getElementById('dietBody');
     const rows = tbody.querySelectorAll('tr');
 
     // Keep at least one row
@@ -1739,26 +1712,29 @@ function deleteCalorieRow(btn) {
         const row = btn.closest('tr');
         row.querySelectorAll('input').forEach(input => input.value = '');
         row.querySelectorAll('select').forEach(select => select.selectedIndex = 0);
-        saveCalories();
-        updateCalorieStats();
+        saveDiet();
+        updateDietStats();
         return;
     }
 
     btn.closest('tr').remove();
-    saveCalories();
-    updateCalorieStats();
+    saveDiet();
+    updateDietStats();
 }
 
-function saveCalories() {
+function saveDiet() {
     const dateStr = getCurrentDateStr();
-    const rows = document.querySelectorAll('#caloriesBody tr');
+    const rows = document.querySelectorAll('#dietBody tr');
     const foods = [];
 
     rows.forEach(row => {
         foods.push({
             item: row.querySelector('.food-item')?.value || '',
+            portion: parseInt(row.querySelector('.food-portion')?.value) || 0,
             type: row.querySelector('.food-type')?.value || '',
-            foodClass: row.querySelector('.food-class')?.value || '',
+            protein: parseInt(row.querySelector('.food-protein')?.value) || 0,
+            carbs: parseInt(row.querySelector('.food-carbs')?.value) || 0,
+            fat: parseInt(row.querySelector('.food-fat')?.value) || 0,
             calories: parseInt(row.querySelector('.food-calories')?.value) || 0,
             comment: row.querySelector('.food-comment')?.value || ''
         });
@@ -1767,22 +1743,23 @@ function saveCalories() {
     if (!appState.savedData[dateStr]) {
         appState.savedData[dateStr] = {};
     }
-    appState.savedData[dateStr].calories = foods;
+    appState.savedData[dateStr].diet = foods;
 
     saveData();
 }
 
-function loadCalories() {
+function loadDiet() {
     const dateStr = getCurrentDateStr();
-    const foods = appState.savedData[dateStr]?.calories || [];
-    const tbody = document.getElementById('caloriesBody');
+    // Support both old 'calories' key and new 'diet' key for backward compatibility
+    const foods = appState.savedData[dateStr]?.diet || appState.savedData[dateStr]?.calories || [];
+    const tbody = document.getElementById('dietBody');
 
     if (!tbody) return;
     tbody.innerHTML = '';
 
     if (!Array.isArray(foods) || foods.length === 0) {
         // Add one empty row by default
-        addCalorieRow();
+        addDietRow();
         return;
     }
 
@@ -1790,78 +1767,96 @@ function loadCalories() {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><input type="text" class="food-item" placeholder="Food item" value="${food.item || ''}"></td>
+            <td><input type="number" class="food-portion" min="0" placeholder="g" value="${food.portion || ''}"></td>
             <td>
                 <select class="food-type">
-                    <option value="">Select</option>
+                    <option value="">-</option>
                     <option value="food" ${food.type === 'food' ? 'selected' : ''}>Food</option>
-                    <option value="ingredient" ${food.type === 'ingredient' ? 'selected' : ''}>Ingredient</option>
                     <option value="drink" ${food.type === 'drink' ? 'selected' : ''}>Drink</option>
                     <option value="snack" ${food.type === 'snack' ? 'selected' : ''}>Snack</option>
+                    <option value="supplement" ${food.type === 'supplement' ? 'selected' : ''}>Supplement</option>
+                    <option value="meal" ${food.type === 'meal' ? 'selected' : ''}>Meal</option>
                 </select>
             </td>
-            <td>
-                <select class="food-class">
-                    <option value="">Select</option>
-                    <option value="protein" ${food.foodClass === 'protein' ? 'selected' : ''}>Protein</option>
-                    <option value="carbs" ${food.foodClass === 'carbs' ? 'selected' : ''}>Carbs</option>
-                    <option value="fat" ${food.foodClass === 'fat' ? 'selected' : ''}>Fat</option>
-                    <option value="fiber" ${food.foodClass === 'fiber' ? 'selected' : ''}>Fiber</option>
-                    <option value="mixed" ${food.foodClass === 'mixed' ? 'selected' : ''}>Mixed</option>
-                </select>
-            </td>
+            <td><input type="number" class="food-protein" min="0" placeholder="0" value="${food.protein || ''}"></td>
+            <td><input type="number" class="food-carbs" min="0" placeholder="0" value="${food.carbs || ''}"></td>
+            <td><input type="number" class="food-fat" min="0" placeholder="0" value="${food.fat || ''}"></td>
             <td><input type="number" class="food-calories" min="0" placeholder="0" value="${food.calories || ''}"></td>
             <td><input type="text" class="food-comment" placeholder="Notes" value="${food.comment || ''}"></td>
             <td class="actions">
-                <button class="add-btn" onclick="addCalorieRow(this.closest('tr'))">+</button>
-                <button class="delete-btn" onclick="deleteCalorieRow(this)">-</button>
+                <button class="add-btn" onclick="addDietRow(this.closest('tr'))">+</button>
+                <button class="delete-btn" onclick="deleteDietRow(this)">-</button>
             </td>
         `;
 
         row.querySelectorAll('input, select').forEach(el => {
             el.addEventListener('input', () => {
-                saveCalories();
-                updateCalorieStats();
+                saveDiet();
+                updateDietStats();
             });
             el.addEventListener('change', () => {
-                saveCalories();
-                updateCalorieStats();
+                saveDiet();
+                updateDietStats();
             });
         });
 
         tbody.appendChild(row);
     });
 
-    updateCalorieStats();
+    updateDietStats();
 }
 
-function updateCalorieStats() {
-    const rows = document.querySelectorAll('#caloriesBody tr');
+function updateDietStats() {
+    const rows = document.querySelectorAll('#dietBody tr');
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
     let totalCalories = 0;
 
     rows.forEach(row => {
+        totalProtein += parseInt(row.querySelector('.food-protein')?.value) || 0;
+        totalCarbs += parseInt(row.querySelector('.food-carbs')?.value) || 0;
+        totalFat += parseInt(row.querySelector('.food-fat')?.value) || 0;
         totalCalories += parseInt(row.querySelector('.food-calories')?.value) || 0;
     });
+
+    const proteinEl = document.getElementById('totalProtein');
+    if (proteinEl) proteinEl.innerHTML = `<strong>${totalProtein}g</strong>`;
+
+    const carbsEl = document.getElementById('totalCarbs');
+    if (carbsEl) carbsEl.innerHTML = `<strong>${totalCarbs}g</strong>`;
+
+    const fatEl = document.getElementById('totalFat');
+    if (fatEl) fatEl.innerHTML = `<strong>${totalFat}g</strong>`;
 
     const calEl = document.getElementById('totalCalories');
     if (calEl) calEl.innerHTML = `<strong>${totalCalories}</strong>`;
 }
 
-function clearCaloriesTable() {
-    if (confirm('Clear all calorie entries for this day?')) {
-        const tbody = document.getElementById('caloriesBody');
+function clearDietTable() {
+    if (confirm('Clear all diet entries for this day?')) {
+        const tbody = document.getElementById('dietBody');
         if (tbody) {
             tbody.innerHTML = '';
-            addCalorieRow();
+            addDietRow();
         }
 
         const dateStr = getCurrentDateStr();
         if (appState.savedData[dateStr]) {
-            appState.savedData[dateStr].calories = [];
+            appState.savedData[dateStr].diet = [];
         }
         saveData();
-        updateCalorieStats();
+        updateDietStats();
     }
 }
+
+// Backward compatibility aliases
+function addCalorieRow(afterRow = null) { addDietRow(afterRow); }
+function deleteCalorieRow(btn) { deleteDietRow(btn); }
+function saveCalories() { saveDiet(); }
+function loadCalories() { loadDiet(); }
+function updateCalorieStats() { updateDietStats(); }
+function clearCaloriesTable() { clearDietTable(); }
 
 function clearDiary() {
     if (confirm('Clear the diary for this day?')) {
@@ -1919,11 +1914,11 @@ function clearAllData() {
         const diaryContent = document.getElementById('diaryContent');
         if (diaryContent) diaryContent.value = '';
 
-        // Clear calories tab (table format)
-        const caloriesBody = document.getElementById('caloriesBody');
-        if (caloriesBody) {
-            caloriesBody.innerHTML = '';
-            addCalorieRow();
+        // Clear diet tab
+        const dietBody = document.getElementById('dietBody');
+        if (dietBody) {
+            dietBody.innerHTML = '';
+            addDietRow();
         }
 
         // Clear fitness tab
@@ -2259,56 +2254,47 @@ function exportToExcel() {
     diarySheet['!cols'] = [{ width: 12 }, { width: 80 }];
     XLSX.utils.book_append_sheet(workbook, diarySheet, 'Diary');
 
-    // Sheet 3: Calories (always created) - sorted by date oldest to newest
-    const caloriesData = [['Date', 'Food Item', 'Type', 'Class', 'Calories (kcal)', 'Comment']];
+    // Sheet 3: Diet (renamed from Calories) - sorted by date oldest to newest
+    const dietData = [['Date', 'Food Item', 'Portion (g)', 'Type', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Calories', 'Comment']];
     Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
-        const foods = appState.savedData[dateStr]?.calories;
+        // Support both new 'diet' key and old 'calories' key
+        const foods = appState.savedData[dateStr]?.diet || appState.savedData[dateStr]?.calories;
         // Handle new array format (multiple food items)
         if (Array.isArray(foods)) {
             foods.forEach(food => {
-                if (food.item || food.calories) {
-                    caloriesData.push([
+                if (food.item || food.calories || food.protein) {
+                    dietData.push([
                         dateStr,
                         food.item || '',
+                        food.portion || 0,
                         food.type || '',
-                        food.foodClass || '',
+                        food.protein || 0,
+                        food.carbs || 0,
+                        food.fat || 0,
                         food.calories || 0,
                         food.comment || ''
                     ]);
                 }
             });
         }
-        // Handle old format (single intake/weight) for backward compatibility
-        else if (foods && (foods.intake || foods.weight)) {
-            caloriesData.push([
-                dateStr,
-                'Daily Total (old format)',
-                '',
-                '',
-                foods.intake || 0,
-                foods.comment || ''
-            ]);
-        }
     });
-    const caloriesSheet = XLSX.utils.aoa_to_sheet(caloriesData);
-    caloriesSheet['!cols'] = [{ width: 12 }, { width: 25 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 30 }];
-    XLSX.utils.book_append_sheet(workbook, caloriesSheet, 'Calories');
+    const dietSheet = XLSX.utils.aoa_to_sheet(dietData);
+    dietSheet['!cols'] = [{ width: 12 }, { width: 20 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 10 }, { width: 20 }];
+    XLSX.utils.book_append_sheet(workbook, dietSheet, 'Diet');
 
-    // Sheet 4: Fitness (always created) - with Steps and Distance - sorted by date oldest to newest
-    const fitnessData = [['Date', 'Exercise', 'Sets', 'Reps', 'Weight (kg)', 'Body Wt (kg)', 'Steps', 'Distance (km)', 'Burnt (kcal)', 'Comment']];
+    // Sheet 4: Fitness (updated columns) - sorted by date oldest to newest
+    const fitnessData = [['Date', 'Exercise', 'Sets', 'Reps', 'kg', 'Duration (min)', 'Burnt (kcal)', 'Comment']];
     Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
         const exercises = appState.savedData[dateStr]?.fitness || [];
         exercises.forEach(ex => {
-            if (ex.exercise || ex.sets || ex.reps || ex.caloriesBurnt || ex.steps || ex.distance) {
+            if (ex.exercise || ex.sets || ex.reps || ex.caloriesBurnt || ex.duration || ex.kg) {
                 fitnessData.push([
                     dateStr,
                     ex.exercise || '',
                     ex.sets || 0,
                     ex.reps || 0,
-                    ex.weight || 0,
-                    ex.bodyWeight || '',
-                    ex.steps || 0,
-                    ex.distance || 0,
+                    ex.kg || ex.weight || 0,  // Support both new 'kg' and old 'weight' keys
+                    ex.duration || 0,
                     ex.caloriesBurnt || 0,
                     ex.comment || ''
                 ]);
@@ -2316,7 +2302,7 @@ function exportToExcel() {
         });
     });
     const fitnessSheet = XLSX.utils.aoa_to_sheet(fitnessData);
-    fitnessSheet['!cols'] = [{ width: 12 }, { width: 20 }, { width: 6 }, { width: 6 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 25 }];
+    fitnessSheet['!cols'] = [{ width: 12 }, { width: 22 }, { width: 6 }, { width: 6 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 25 }];
     XLSX.utils.book_append_sheet(workbook, fitnessSheet, 'Fitness');
 
     // Save file
@@ -2488,60 +2474,66 @@ function importFromExcel(event) {
                 });
             }
 
-            // Import Calories sheet (new format: Date, Food Item, Type, Class, Calories, Comment)
-            if (workbook.SheetNames.includes('Calories')) {
-                const caloriesSheet = workbook.Sheets['Calories'];
-                const caloriesData = XLSX.utils.sheet_to_json(caloriesSheet, { header: 1 });
+            // Import Diet sheet (new format with macros) - also check for old 'Calories' sheet name
+            const dietSheetName = workbook.SheetNames.includes('Diet') ? 'Diet' :
+                                  workbook.SheetNames.includes('Calories') ? 'Calories' : null;
 
-                const caloriesByDate = {};
-                caloriesData.slice(1).forEach(row => {
+            if (dietSheetName) {
+                const dietSheet = workbook.Sheets[dietSheetName];
+                const dietData = XLSX.utils.sheet_to_json(dietSheet, { header: 1 });
+
+                // Check header to determine format
+                const headerRow = dietData[0] || [];
+                const hasNewFormat = headerRow.includes('Protein (g)') || headerRow.includes('Portion (g)');
+
+                const dietByDate = {};
+                dietData.slice(1).forEach(row => {
                     if (row[0]) {
                         const dateStr = parseExcelDate(row[0]) || row[0];
-                        if (!caloriesByDate[dateStr]) caloriesByDate[dateStr] = [];
-                        caloriesByDate[dateStr].push({
-                            item: row[1] || '',
-                            type: row[2] || '',
-                            foodClass: row[3] || '',
-                            calories: parseInt(row[4]) || 0,
-                            comment: row[5] || ''
-                        });
+                        if (!dietByDate[dateStr]) dietByDate[dateStr] = [];
+
+                        if (hasNewFormat) {
+                            // New format: Date, Food Item, Portion, Type, Protein, Carbs, Fat, Calories, Comment
+                            dietByDate[dateStr].push({
+                                item: row[1] || '',
+                                portion: parseInt(row[2]) || 0,
+                                type: row[3] || '',
+                                protein: parseInt(row[4]) || 0,
+                                carbs: parseInt(row[5]) || 0,
+                                fat: parseInt(row[6]) || 0,
+                                calories: parseInt(row[7]) || 0,
+                                comment: row[8] || ''
+                            });
+                        } else {
+                            // Old format: Date, Food Item, Type, Class, Calories, Comment
+                            dietByDate[dateStr].push({
+                                item: row[1] || '',
+                                portion: 0,
+                                type: row[2] || '',
+                                protein: 0,
+                                carbs: 0,
+                                fat: 0,
+                                calories: parseInt(row[4]) || 0,
+                                comment: row[5] || ''
+                            });
+                        }
                     }
                 });
 
-                Object.keys(caloriesByDate).forEach(dateStr => {
+                Object.keys(dietByDate).forEach(dateStr => {
                     if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
-                    appState.savedData[dateStr].calories = caloriesByDate[dateStr];
-                });
-            }
-            // Fallback: Import old Calories_Weight sheet format
-            else if (workbook.SheetNames.includes('Calories_Weight')) {
-                const caloriesSheet = workbook.Sheets['Calories_Weight'];
-                const caloriesData = XLSX.utils.sheet_to_json(caloriesSheet, { header: 1 });
-
-                caloriesData.slice(1).forEach(row => {
-                    if (row[0]) {
-                        const dateStr = parseExcelDate(row[0]) || row[0];
-                        if (!appState.savedData[dateStr]) appState.savedData[dateStr] = {};
-                        // Convert old format to new array format
-                        appState.savedData[dateStr].calories = [{
-                            item: 'Daily Total (imported)',
-                            type: '',
-                            foodClass: '',
-                            calories: parseInt(row[1]) || 0,
-                            comment: row[3] || ''
-                        }];
-                    }
+                    appState.savedData[dateStr].diet = dietByDate[dateStr];
                 });
             }
 
-            // Import Fitness sheet (new format: Date, Exercise, Sets, Reps, Weight, Body Weight, Calories Burnt, Comment)
+            // Import Fitness sheet (updated format: Date, Exercise, Sets, Reps, kg, Duration, Burnt, Comment)
             if (workbook.SheetNames.includes('Fitness')) {
                 const fitnessSheet = workbook.Sheets['Fitness'];
                 const fitnessData = XLSX.utils.sheet_to_json(fitnessSheet, { header: 1 });
 
-                // Check if it's new format (8 columns) or old format (6 columns)
+                // Check header to determine format
                 const headerRow = fitnessData[0] || [];
-                const isNewFormat = headerRow.length >= 8 || headerRow.includes('Body Weight (kg)') || headerRow.includes('Calories Burnt');
+                const hasNewFormat = headerRow.includes('Duration (min)') || headerRow.includes('Duration');
 
                 const fitnessByDate = {};
                 fitnessData.slice(1).forEach(row => {
@@ -2549,27 +2541,27 @@ function importFromExcel(event) {
                         const dateStr = parseExcelDate(row[0]) || row[0];
                         if (!fitnessByDate[dateStr]) fitnessByDate[dateStr] = [];
 
-                        if (isNewFormat) {
-                            // New format: Date, Exercise, Sets, Reps, Weight, Body Weight, Calories Burnt, Comment
+                        if (hasNewFormat) {
+                            // New format: Date, Exercise, Sets, Reps, kg, Duration, Burnt, Comment
                             fitnessByDate[dateStr].push({
                                 exercise: row[1] || '',
                                 sets: parseInt(row[2]) || 0,
                                 reps: parseInt(row[3]) || 0,
-                                weight: parseFloat(row[4]) || 0,
-                                bodyWeight: parseFloat(row[5]) || 0,
+                                kg: parseFloat(row[4]) || 0,
+                                duration: parseInt(row[5]) || 0,
                                 caloriesBurnt: parseInt(row[6]) || 0,
                                 comment: row[7] || ''
                             });
                         } else {
-                            // Old format: Date, Exercise, Sets, Reps, Weight, Comment
+                            // Old format: Date, Exercise, Sets, Reps, Weight, Body Wt, Steps, Distance, Burnt, Comment
                             fitnessByDate[dateStr].push({
                                 exercise: row[1] || '',
                                 sets: parseInt(row[2]) || 0,
                                 reps: parseInt(row[3]) || 0,
-                                weight: parseFloat(row[4]) || 0,
-                                bodyWeight: 0,
-                                caloriesBurnt: 0,
-                                comment: row[5] || ''
+                                kg: parseFloat(row[4]) || 0,
+                                duration: 0,
+                                caloriesBurnt: parseInt(row[8]) || 0,
+                                comment: row[9] || ''
                             });
                         }
                     }
@@ -2618,3 +2610,257 @@ function importFromExcel(event) {
 
 // Keep presetCategories as alias for backward compatibility
 const presetCategories = PRESET_CATEGORIES;
+
+// =============================================================================
+// LOAD TEMPLATE FUNCTIONALITY
+// =============================================================================
+
+function showLoadTemplateModal() {
+    const template = getTemplateForDate(selectedDate);
+    const workoutName = getWorkoutNameForDay(template.dayNumber);
+
+    const modalHtml = `
+        <div class="modal-overlay" id="templateModal">
+            <div class="modal-content">
+                <h3>Load Template for ${template.dayName}</h3>
+                <p class="modal-subtitle">${workoutName} Day</p>
+
+                <div class="template-options">
+                    <label class="template-checkbox">
+                        <input type="checkbox" id="loadTimetable" checked>
+                        <span>Timetable</span>
+                        <small>${template.timetable.rows.length} activities</small>
+                    </label>
+
+                    <label class="template-checkbox">
+                        <input type="checkbox" id="loadDiet" checked>
+                        <span>Diet</span>
+                        <small>${template.diet.length} food items</small>
+                    </label>
+
+                    <label class="template-checkbox">
+                        <input type="checkbox" id="loadFitness" checked>
+                        <span>Fitness</span>
+                        <small>${template.fitness.length} exercises</small>
+                    </label>
+                </div>
+
+                <div class="modal-warning">
+                    <small>This will replace existing data for the selected day.</small>
+                </div>
+
+                <div class="modal-buttons">
+                    <button class="btn btn-secondary" onclick="closeTemplateModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="loadSelectedTemplates()">Load Template</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeTemplateModal() {
+    const modal = document.getElementById('templateModal');
+    if (modal) modal.remove();
+}
+
+function loadSelectedTemplates() {
+    const loadTimetable = document.getElementById('loadTimetable').checked;
+    const loadDiet = document.getElementById('loadDiet').checked;
+    const loadFitness = document.getElementById('loadFitness').checked;
+
+    if (!loadTimetable && !loadDiet && !loadFitness) {
+        alert('Please select at least one template to load.');
+        return;
+    }
+
+    const template = getTemplateForDate(selectedDate);
+    const dateStr = getCurrentDateStr();
+
+    // Ensure date entry exists
+    if (!appState.savedData[dateStr]) {
+        appState.savedData[dateStr] = {};
+    }
+
+    if (loadTimetable) {
+        loadTimetableTemplate(template.timetable);
+    }
+
+    if (loadDiet) {
+        loadDietTemplate(template.diet);
+    }
+
+    if (loadFitness) {
+        loadFitnessTemplate(template.fitness);
+    }
+
+    saveData();
+    closeTemplateModal();
+
+    const loaded = [];
+    if (loadTimetable) loaded.push('Timetable');
+    if (loadDiet) loaded.push('Diet');
+    if (loadFitness) loaded.push('Fitness');
+
+    alert(`Loaded: ${loaded.join(', ')} template for ${template.dayName}`);
+}
+
+function loadTimetableTemplate(template) {
+    // Set start hour
+    startHour = template.startHour;
+    appState.startHour = template.startHour;
+    document.getElementById('startTimeSelect').value = template.startHour;
+
+    // Clear existing timetable
+    const tbody = document.getElementById('timetableBody');
+    tbody.innerHTML = '';
+
+    // Reset row counter
+    rowCounter = 0;
+
+    // Add rows from template (all except last one, which becomes auto-fill)
+    const templateRows = template.rows;
+
+    templateRows.forEach((rowData, index) => {
+        const isLastRow = index === templateRows.length - 1;
+        const row = createTableRow(rowCounter++);
+
+        // Set values
+        const durationInput = row.querySelector('.duration');
+        const taskInput = row.querySelector('.task');
+        const categorySelect = row.querySelector('.category-select');
+        const commentInput = row.querySelector('.comment');
+
+        if (durationInput) durationInput.value = rowData.duration;
+        if (taskInput) taskInput.value = rowData.task;
+        if (commentInput) commentInput.value = rowData.comment || '';
+
+        // Set category
+        if (categorySelect && rowData.category) {
+            categorySelect.value = rowData.category;
+            updateCategoryDisplay(categorySelect, rowData.category);
+        }
+
+        // Make last row the auto-fill row
+        if (isLastRow) {
+            row.dataset.isAutoFill = 'true';
+            if (durationInput) durationInput.readOnly = true;
+        }
+
+        tbody.appendChild(row);
+    });
+
+    // Update display
+    redistributeTime();
+    updateRowButtons();
+    saveData();
+}
+
+function loadDietTemplate(dietItems) {
+    const tbody = document.getElementById('dietBody');
+    if (!tbody) {
+        console.error('Diet tbody not found');
+        return;
+    }
+
+    tbody.innerHTML = '';
+
+    dietItems.forEach(food => {
+        const row = document.createElement('tr');
+        // Use explicit checks to preserve 0 values
+        const portion = food.portion !== undefined ? food.portion : '';
+        const protein = food.protein !== undefined ? food.protein : '';
+        const carbs = food.carbs !== undefined ? food.carbs : '';
+        const fat = food.fat !== undefined ? food.fat : '';
+        const calories = food.calories !== undefined ? food.calories : '';
+
+        row.innerHTML = `
+            <td><input type="text" class="food-item" placeholder="Food item" value="${food.item || ''}"></td>
+            <td><input type="number" class="food-portion" min="0" placeholder="g" value="${portion}"></td>
+            <td>
+                <select class="food-type">
+                    <option value="">-</option>
+                    <option value="food" ${food.type === 'food' ? 'selected' : ''}>Food</option>
+                    <option value="drink" ${food.type === 'drink' ? 'selected' : ''}>Drink</option>
+                    <option value="snack" ${food.type === 'snack' ? 'selected' : ''}>Snack</option>
+                    <option value="supplement" ${food.type === 'supplement' ? 'selected' : ''}>Supplement</option>
+                    <option value="meal" ${food.type === 'meal' ? 'selected' : ''}>Meal</option>
+                </select>
+            </td>
+            <td><input type="number" class="food-protein" min="0" placeholder="0" value="${protein}"></td>
+            <td><input type="number" class="food-carbs" min="0" placeholder="0" value="${carbs}"></td>
+            <td><input type="number" class="food-fat" min="0" placeholder="0" value="${fat}"></td>
+            <td><input type="number" class="food-calories" min="0" placeholder="0" value="${calories}"></td>
+            <td><input type="text" class="food-comment" placeholder="Notes" value="${food.comment || ''}"></td>
+            <td class="actions">
+                <button class="add-btn" onclick="addDietRow(this.closest('tr'))">+</button>
+                <button class="delete-btn" onclick="deleteDietRow(this)">-</button>
+            </td>
+        `;
+
+        row.querySelectorAll('input, select').forEach(el => {
+            el.addEventListener('input', () => {
+                saveDiet();
+                updateDietStats();
+            });
+            el.addEventListener('change', () => {
+                saveDiet();
+                updateDietStats();
+            });
+        });
+
+        tbody.appendChild(row);
+    });
+
+    // Save diet data and update stats
+    saveDiet();
+    updateDietStats();
+}
+
+function loadFitnessTemplate(exercises) {
+    const tbody = document.getElementById('fitnessBody');
+    if (!tbody) {
+        console.error('Fitness tbody not found');
+        return;
+    }
+
+    tbody.innerHTML = '';
+
+    exercises.forEach(ex => {
+        const row = document.createElement('tr');
+        // Use explicit checks to preserve 0 values
+        const sets = ex.sets !== undefined ? ex.sets : '';
+        const reps = ex.reps !== undefined ? ex.reps : '';
+        const kg = ex.kg !== undefined ? ex.kg : '';
+        const duration = ex.duration !== undefined ? ex.duration : '';
+        const caloriesBurnt = ex.caloriesBurnt !== undefined ? ex.caloriesBurnt : '';
+
+        row.innerHTML = `
+            <td><input type="text" class="exercise-name" placeholder="Exercise" value="${ex.exercise || ''}"></td>
+            <td><input type="number" class="sets" min="0" placeholder="0" value="${sets}"></td>
+            <td><input type="number" class="reps" min="0" placeholder="0" value="${reps}"></td>
+            <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0" value="${kg}"></td>
+            <td><input type="number" class="duration-min" min="0" placeholder="0" value="${duration}"></td>
+            <td><input type="number" class="calories-burnt" min="0" placeholder="0" value="${caloriesBurnt}"></td>
+            <td><input type="text" class="exercise-comment" placeholder="Notes" value="${ex.comment || ''}"></td>
+            <td class="actions">
+                <button class="add-btn" onclick="addFitnessRow(this.closest('tr'))">+</button>
+                <button class="delete-btn" onclick="deleteFitnessRow(this)">-</button>
+            </td>
+        `;
+
+        row.querySelectorAll('input').forEach(input => {
+            input.addEventListener('input', () => {
+                saveFitness();
+                updateFitnessStats();
+            });
+        });
+
+        tbody.appendChild(row);
+    });
+
+    // Save fitness data and update stats
+    saveFitness();
+    updateFitnessStats();
+}
