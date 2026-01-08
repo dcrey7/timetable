@@ -252,77 +252,78 @@ const DEFAULT_TEMPLATES = {
 
     // =============================================================================
     // FITNESS TEMPLATES (per day of week)
+    // Type: 'exercise' for workouts, 'body' for body measurements (weight, etc.)
     // =============================================================================
     fitness: {
         // Monday - Back + Biceps
         1: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Deadlift', sets: 4, reps: 8, kg: 80, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Pull-ups', sets: 4, reps: 10, kg: 0, duration: 0, caloriesBurnt: 0, comment: 'Bodyweight' },
-            { exercise: 'Barbell Row', sets: 3, reps: 12, kg: 50, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Seated Cable Row', sets: 3, reps: 12, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Barbell Curl', sets: 3, reps: 12, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Hammer Curl', sets: 3, reps: 12, kg: 12, duration: 0, caloriesBurnt: 0, comment: 'Each arm' },
-            { exercise: 'Incline Walk', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 100, comment: 'Cardio' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Deadlift', type: 'exercise', sets: 4, reps: 8, kg: 80, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Pull-ups', type: 'exercise', sets: 4, reps: 10, kg: 0, duration: 0, caloriesBurnt: 0, comment: 'Bodyweight' },
+            { exercise: 'Barbell Row', type: 'exercise', sets: 3, reps: 12, kg: 50, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Seated Cable Row', type: 'exercise', sets: 3, reps: 12, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Barbell Curl', type: 'exercise', sets: 3, reps: 12, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Hammer Curl', type: 'exercise', sets: 3, reps: 12, kg: 12, duration: 0, caloriesBurnt: 0, comment: 'Each arm' },
+            { exercise: 'Incline Walk', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 100, comment: 'Cardio' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
         ],
         // Tuesday - Chest + Triceps
         2: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Bench Press', sets: 4, reps: 10, kg: 60, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Incline DB Press', sets: 3, reps: 12, kg: 20, duration: 0, caloriesBurnt: 0, comment: 'Each arm' },
-            { exercise: 'Cable Crossover', sets: 3, reps: 15, kg: 15, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Close-Grip Bench', sets: 3, reps: 10, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Tricep Pushdown', sets: 3, reps: 15, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Overhead Extension', sets: 3, reps: 12, kg: 15, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Bench Press', type: 'exercise', sets: 4, reps: 10, kg: 60, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Incline DB Press', type: 'exercise', sets: 3, reps: 12, kg: 20, duration: 0, caloriesBurnt: 0, comment: 'Each arm' },
+            { exercise: 'Cable Crossover', type: 'exercise', sets: 3, reps: 15, kg: 15, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Close-Grip Bench', type: 'exercise', sets: 3, reps: 10, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Tricep Pushdown', type: 'exercise', sets: 3, reps: 15, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Overhead Extension', type: 'exercise', sets: 3, reps: 12, kg: 15, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
         ],
         // Wednesday - Cardio + Abs
         3: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Steady Cardio', sets: 0, reps: 0, kg: 0, duration: 30, caloriesBurnt: 250, comment: 'Bike or jog' },
-            { exercise: 'Hanging Leg Raises', sets: 3, reps: 15, kg: 0, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Cable Crunch', sets: 3, reps: 20, kg: 30, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Plank', sets: 3, reps: 60, kg: 0, duration: 0, caloriesBurnt: 0, comment: '60 seconds' },
-            { exercise: 'Russian Twists', sets: 3, reps: 20, kg: 0, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 300, comment: '10000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Steady Cardio', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 30, caloriesBurnt: 250, comment: 'Bike or jog' },
+            { exercise: 'Hanging Leg Raises', type: 'exercise', sets: 3, reps: 15, kg: 0, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Cable Crunch', type: 'exercise', sets: 3, reps: 20, kg: 30, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Plank', type: 'exercise', sets: 3, reps: 60, kg: 0, duration: 0, caloriesBurnt: 0, comment: '60 seconds' },
+            { exercise: 'Russian Twists', type: 'exercise', sets: 3, reps: 20, kg: 0, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 300, comment: '10000 steps' }
         ],
         // Thursday - Legs
         4: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Barbell Squat', sets: 4, reps: 10, kg: 70, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Romanian Deadlift', sets: 3, reps: 12, kg: 50, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Leg Press', sets: 3, reps: 12, kg: 120, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Bulgarian Split Squat', sets: 3, reps: 10, kg: 15, duration: 0, caloriesBurnt: 0, comment: 'Each leg' },
-            { exercise: 'Leg Curl', sets: 3, reps: 15, kg: 35, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Calf Raises', sets: 4, reps: 20, kg: 60, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Recovery Walk', sets: 0, reps: 0, kg: 0, duration: 10, caloriesBurnt: 50, comment: 'Light' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Barbell Squat', type: 'exercise', sets: 4, reps: 10, kg: 70, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Romanian Deadlift', type: 'exercise', sets: 3, reps: 12, kg: 50, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Leg Press', type: 'exercise', sets: 3, reps: 12, kg: 120, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Bulgarian Split Squat', type: 'exercise', sets: 3, reps: 10, kg: 15, duration: 0, caloriesBurnt: 0, comment: 'Each leg' },
+            { exercise: 'Leg Curl', type: 'exercise', sets: 3, reps: 15, kg: 35, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Calf Raises', type: 'exercise', sets: 4, reps: 20, kg: 60, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Recovery Walk', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 10, caloriesBurnt: 50, comment: 'Light' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
         ],
         // Friday - Shoulders + Arms
         5: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Overhead Press', sets: 4, reps: 10, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Lateral Raises', sets: 3, reps: 15, kg: 8, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Rear Delt Flyes', sets: 3, reps: 15, kg: 8, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Face Pulls', sets: 3, reps: 20, kg: 20, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Barbell Curl', sets: 3, reps: 12, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Skull Crushers', sets: 3, reps: 12, kg: 20, duration: 0, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Incline Walk', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 100, comment: 'Cardio' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Overhead Press', type: 'exercise', sets: 4, reps: 10, kg: 40, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Lateral Raises', type: 'exercise', sets: 3, reps: 15, kg: 8, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Rear Delt Flyes', type: 'exercise', sets: 3, reps: 15, kg: 8, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Face Pulls', type: 'exercise', sets: 3, reps: 20, kg: 20, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Barbell Curl', type: 'exercise', sets: 3, reps: 12, kg: 25, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Skull Crushers', type: 'exercise', sets: 3, reps: 12, kg: 20, duration: 0, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Incline Walk', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 100, comment: 'Cardio' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 200, comment: '8000 steps' }
         ],
         // Saturday - Football
         6: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Football Match', sets: 0, reps: 0, kg: 0, duration: 90, caloriesBurnt: 600, comment: 'Weekly game' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 400, comment: '12000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Football Match', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 90, caloriesBurnt: 600, comment: 'Weekly game' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 400, comment: '12000 steps' }
         ],
         // Sunday - Rest
         0: [
-            { exercise: 'Weigh-in', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
-            { exercise: 'Light Walk', sets: 0, reps: 0, kg: 0, duration: 30, caloriesBurnt: 100, comment: 'Recovery' },
-            { exercise: 'Stretching', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 0, comment: '' },
-            { exercise: 'Daily Steps', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 150, comment: '5000 steps' }
+            { exercise: 'Weigh-in', type: 'body', sets: 0, reps: 0, kg: 80, duration: 0, caloriesBurnt: 0, comment: 'Morning' },
+            { exercise: 'Light Walk', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 30, caloriesBurnt: 100, comment: 'Recovery' },
+            { exercise: 'Stretching', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 15, caloriesBurnt: 0, comment: '' },
+            { exercise: 'Daily Steps', type: 'exercise', sets: 0, reps: 0, kg: 0, duration: 0, caloriesBurnt: 150, comment: '5000 steps' }
         ]
     }
 };

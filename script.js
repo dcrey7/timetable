@@ -1490,6 +1490,12 @@ function addFitnessRow(afterRow = null) {
     const row = document.createElement('tr');
     row.innerHTML = `
         <td><input type="text" class="exercise-name" placeholder="Exercise"></td>
+        <td>
+            <select class="exercise-type">
+                <option value="exercise">Exercise</option>
+                <option value="body">Body</option>
+            </select>
+        </td>
         <td><input type="number" class="sets" min="0" placeholder="0"></td>
         <td><input type="number" class="reps" min="0" placeholder="0"></td>
         <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0"></td>
@@ -1502,9 +1508,13 @@ function addFitnessRow(afterRow = null) {
         </td>
     `;
 
-    // Auto-save on input
-    row.querySelectorAll('input').forEach(input => {
+    // Auto-save on input and select change
+    row.querySelectorAll('input, select').forEach(input => {
         input.addEventListener('input', () => {
+            saveFitness();
+            updateFitnessStats();
+        });
+        input.addEventListener('change', () => {
             saveFitness();
             updateFitnessStats();
         });
@@ -1547,6 +1557,7 @@ function saveFitness() {
     rows.forEach(row => {
         exercises.push({
             exercise: row.querySelector('.exercise-name')?.value || '',
+            type: row.querySelector('.exercise-type')?.value || 'exercise',
             sets: parseInt(row.querySelector('.sets')?.value) || 0,
             reps: parseInt(row.querySelector('.reps')?.value) || 0,
             kg: parseFloat(row.querySelector('.weight-kg')?.value) || 0,
@@ -1582,8 +1593,15 @@ function loadFitness() {
         const row = document.createElement('tr');
         // Support both old 'weight' key and new 'kg' key for backward compatibility
         const kgValue = ex.kg || ex.weight || '';
+        const typeValue = ex.type || 'exercise';
         row.innerHTML = `
             <td><input type="text" class="exercise-name" placeholder="Exercise" value="${ex.exercise || ''}"></td>
+            <td>
+                <select class="exercise-type">
+                    <option value="exercise" ${typeValue === 'exercise' ? 'selected' : ''}>Exercise</option>
+                    <option value="body" ${typeValue === 'body' ? 'selected' : ''}>Body</option>
+                </select>
+            </td>
             <td><input type="number" class="sets" min="0" placeholder="0" value="${ex.sets || ''}"></td>
             <td><input type="number" class="reps" min="0" placeholder="0" value="${ex.reps || ''}"></td>
             <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0" value="${kgValue}"></td>
@@ -1596,8 +1614,12 @@ function loadFitness() {
             </td>
         `;
 
-        row.querySelectorAll('input').forEach(input => {
+        row.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('input', () => {
+                saveFitness();
+                updateFitnessStats();
+            });
+            input.addEventListener('change', () => {
                 saveFitness();
                 updateFitnessStats();
             });
@@ -1613,11 +1635,30 @@ function updateFitnessStats() {
     const rows = document.querySelectorAll('#fitnessBody tr');
     let totalDuration = 0;
     let totalCaloriesBurnt = 0;
+    let bodyWeights = [];
 
     rows.forEach(row => {
+        const type = row.querySelector('.exercise-type')?.value || 'exercise';
+        const kg = parseFloat(row.querySelector('.weight-kg')?.value) || 0;
+
         totalDuration += parseInt(row.querySelector('.duration-min')?.value) || 0;
         totalCaloriesBurnt += parseInt(row.querySelector('.calories-burnt')?.value) || 0;
+
+        // Collect body weights from "body" type rows
+        if (type === 'body' && kg > 0) {
+            bodyWeights.push(kg);
+        }
     });
+
+    // Calculate average body weight
+    const avgBodyWeight = bodyWeights.length > 0
+        ? (bodyWeights.reduce((a, b) => a + b, 0) / bodyWeights.length).toFixed(1)
+        : '--';
+
+    const avgWeightEl = document.getElementById('avgBodyWeight');
+    if (avgWeightEl) {
+        avgWeightEl.innerHTML = `<strong>${avgBodyWeight}</strong>`;
+    }
 
     const durationEl = document.getElementById('totalDurationFitness');
     if (durationEl) {
@@ -2282,8 +2323,8 @@ function exportToExcel() {
     dietSheet['!cols'] = [{ width: 12 }, { width: 20 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 10 }, { width: 20 }];
     XLSX.utils.book_append_sheet(workbook, dietSheet, 'Diet');
 
-    // Sheet 4: Fitness (updated columns) - sorted by date oldest to newest
-    const fitnessData = [['Date', 'Exercise', 'Sets', 'Reps', 'kg', 'Duration (min)', 'Burnt (kcal)', 'Comment']];
+    // Sheet 4: Fitness (updated columns with Type) - sorted by date oldest to newest
+    const fitnessData = [['Date', 'Exercise', 'Type', 'Sets', 'Reps', 'kg', 'Duration (min)', 'Burnt (kcal)', 'Comment']];
     Object.keys(appState.savedData).sort((a, b) => a.localeCompare(b)).forEach(dateStr => {
         const exercises = appState.savedData[dateStr]?.fitness || [];
         exercises.forEach(ex => {
@@ -2291,6 +2332,7 @@ function exportToExcel() {
                 fitnessData.push([
                     dateStr,
                     ex.exercise || '',
+                    ex.type || 'exercise',
                     ex.sets || 0,
                     ex.reps || 0,
                     ex.kg || ex.weight || 0,  // Support both new 'kg' and old 'weight' keys
@@ -2302,7 +2344,7 @@ function exportToExcel() {
         });
     });
     const fitnessSheet = XLSX.utils.aoa_to_sheet(fitnessData);
-    fitnessSheet['!cols'] = [{ width: 12 }, { width: 22 }, { width: 6 }, { width: 6 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 25 }];
+    fitnessSheet['!cols'] = [{ width: 12 }, { width: 22 }, { width: 10 }, { width: 6 }, { width: 6 }, { width: 8 }, { width: 12 }, { width: 10 }, { width: 25 }];
     XLSX.utils.book_append_sheet(workbook, fitnessSheet, 'Fitness');
 
     // Save file
@@ -2526,13 +2568,14 @@ function importFromExcel(event) {
                 });
             }
 
-            // Import Fitness sheet (updated format: Date, Exercise, Sets, Reps, kg, Duration, Burnt, Comment)
+            // Import Fitness sheet (format: Date, Exercise, Type, Sets, Reps, kg, Duration, Burnt, Comment)
             if (workbook.SheetNames.includes('Fitness')) {
                 const fitnessSheet = workbook.Sheets['Fitness'];
                 const fitnessData = XLSX.utils.sheet_to_json(fitnessSheet, { header: 1 });
 
                 // Check header to determine format
                 const headerRow = fitnessData[0] || [];
+                const hasTypeColumn = headerRow.includes('Type');
                 const hasNewFormat = headerRow.includes('Duration (min)') || headerRow.includes('Duration');
 
                 const fitnessByDate = {};
@@ -2541,10 +2584,23 @@ function importFromExcel(event) {
                         const dateStr = parseExcelDate(row[0]) || row[0];
                         if (!fitnessByDate[dateStr]) fitnessByDate[dateStr] = [];
 
-                        if (hasNewFormat) {
-                            // New format: Date, Exercise, Sets, Reps, kg, Duration, Burnt, Comment
+                        if (hasTypeColumn) {
+                            // Newest format: Date, Exercise, Type, Sets, Reps, kg, Duration, Burnt, Comment
                             fitnessByDate[dateStr].push({
                                 exercise: row[1] || '',
+                                type: row[2] || 'exercise',
+                                sets: parseInt(row[3]) || 0,
+                                reps: parseInt(row[4]) || 0,
+                                kg: parseFloat(row[5]) || 0,
+                                duration: parseInt(row[6]) || 0,
+                                caloriesBurnt: parseInt(row[7]) || 0,
+                                comment: row[8] || ''
+                            });
+                        } else if (hasNewFormat) {
+                            // Previous format: Date, Exercise, Sets, Reps, kg, Duration, Burnt, Comment
+                            fitnessByDate[dateStr].push({
+                                exercise: row[1] || '',
+                                type: 'exercise',
                                 sets: parseInt(row[2]) || 0,
                                 reps: parseInt(row[3]) || 0,
                                 kg: parseFloat(row[4]) || 0,
@@ -2556,6 +2612,7 @@ function importFromExcel(event) {
                             // Old format: Date, Exercise, Sets, Reps, Weight, Body Wt, Steps, Distance, Burnt, Comment
                             fitnessByDate[dateStr].push({
                                 exercise: row[1] || '',
+                                type: 'exercise',
                                 sets: parseInt(row[2]) || 0,
                                 reps: parseInt(row[3]) || 0,
                                 kg: parseFloat(row[4]) || 0,
@@ -2830,6 +2887,7 @@ function loadFitnessTemplate(exercises) {
     exercises.forEach(ex => {
         const row = document.createElement('tr');
         // Use explicit checks to preserve 0 values
+        const typeValue = ex.type || 'exercise';
         const sets = ex.sets !== undefined ? ex.sets : '';
         const reps = ex.reps !== undefined ? ex.reps : '';
         const kg = ex.kg !== undefined ? ex.kg : '';
@@ -2838,6 +2896,12 @@ function loadFitnessTemplate(exercises) {
 
         row.innerHTML = `
             <td><input type="text" class="exercise-name" placeholder="Exercise" value="${ex.exercise || ''}"></td>
+            <td>
+                <select class="exercise-type">
+                    <option value="exercise" ${typeValue === 'exercise' ? 'selected' : ''}>Exercise</option>
+                    <option value="body" ${typeValue === 'body' ? 'selected' : ''}>Body</option>
+                </select>
+            </td>
             <td><input type="number" class="sets" min="0" placeholder="0" value="${sets}"></td>
             <td><input type="number" class="reps" min="0" placeholder="0" value="${reps}"></td>
             <td><input type="number" class="weight-kg" min="0" step="0.5" placeholder="0" value="${kg}"></td>
@@ -2850,8 +2914,12 @@ function loadFitnessTemplate(exercises) {
             </td>
         `;
 
-        row.querySelectorAll('input').forEach(input => {
+        row.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('input', () => {
+                saveFitness();
+                updateFitnessStats();
+            });
+            input.addEventListener('change', () => {
                 saveFitness();
                 updateFitnessStats();
             });

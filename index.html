@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Productivity Tracker</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -224,6 +224,7 @@
                         <thead>
                             <tr>
                                 <th>Exercise</th>
+                                <th>Type</th>
                                 <th>Sets</th>
                                 <th>Reps</th>
                                 <th>kg</th>
@@ -238,7 +239,10 @@
                         </tbody>
                         <tfoot>
                             <tr class="total-row">
-                                <td colspan="4"><strong>Totals</strong></td>
+                                <td colspan="2"><strong>Final</strong></td>
+                                <td></td>
+                                <td></td>
+                                <td id="avgBodyWeight"><strong>--</strong></td>
                                 <td id="totalDurationFitness"><strong>0</strong></td>
                                 <td id="totalCaloriesBurnt"><strong>0</strong></td>
                                 <td colspan="2"></td>
@@ -263,7 +267,7 @@
         </div>
     </div>
 
-    <script src="templates.js"></script>
-    <script src="script.js"></script>
+    <script src="templates.js?v=3"></script>
+    <script src="script.js?v=3"></script>
 </body>
 </html>

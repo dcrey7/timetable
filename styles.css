@@ -2185,60 +2185,77 @@ body.dark-mode .modal-warning {
 }
 
 /* =============================================================================
-   UPDATED FITNESS TABLE COLUMN WIDTHS (8 columns)
+   UPDATED FITNESS TABLE COLUMN WIDTHS (9 columns)
    ============================================================================= */
 /* Exercise */
 .fitness-container .timetable th:nth-child(1),
 .fitness-container .timetable td:nth-child(1) {
-    width: 130px;
-    min-width: 110px;
+    width: 120px;
+    min-width: 100px;
+}
+
+/* Type */
+.fitness-container .timetable th:nth-child(2),
+.fitness-container .timetable td:nth-child(2) {
+    width: 80px;
+    min-width: 70px;
 }
 
 /* Sets */
-.fitness-container .timetable th:nth-child(2),
-.fitness-container .timetable td:nth-child(2) {
-    width: 55px;
-    min-width: 45px;
+.fitness-container .timetable th:nth-child(3),
+.fitness-container .timetable td:nth-child(3) {
+    width: 50px;
+    min-width: 40px;
 }
 
 /* Reps */
-.fitness-container .timetable th:nth-child(3),
-.fitness-container .timetable td:nth-child(3) {
+.fitness-container .timetable th:nth-child(4),
+.fitness-container .timetable td:nth-child(4) {
+    width: 50px;
+    min-width: 40px;
+}
+
+/* kg */
+.fitness-container .timetable th:nth-child(5),
+.fitness-container .timetable td:nth-child(5) {
     width: 55px;
     min-width: 45px;
 }
 
-/* kg */
-.fitness-container .timetable th:nth-child(4),
-.fitness-container .timetable td:nth-child(4) {
-    width: 60px;
-    min-width: 50px;
-}
-
 /* Duration */
-.fitness-container .timetable th:nth-child(5),
-.fitness-container .timetable td:nth-child(5) {
-    width: 70px;
-    min-width: 60px;
-}
-
-/* Burnt */
 .fitness-container .timetable th:nth-child(6),
 .fitness-container .timetable td:nth-child(6) {
     width: 65px;
     min-width: 55px;
 }
 
-/* Comment */
+/* Burnt */
 .fitness-container .timetable th:nth-child(7),
 .fitness-container .timetable td:nth-child(7) {
-    width: 100px;
-    min-width: 80px;
+    width: 60px;
+    min-width: 50px;
+}
+
+/* Comment */
+.fitness-container .timetable th:nth-child(8),
+.fitness-container .timetable td:nth-child(8) {
+    width: 90px;
+    min-width: 70px;
 }
 
 /* Actions */
-.fitness-container .timetable th:nth-child(8),
-.fitness-container .timetable td:nth-child(8) {
+.fitness-container .timetable th:nth-child(9),
+.fitness-container .timetable td:nth-child(9) {
     width: 65px;
     min-width: 60px;
+}
+
+/* Centered text for fitness table */
+.fitness-container .timetable th,
+.fitness-container .timetable td {
+    text-align: center;
+}
+
+.fitness-container .timetable input[type="text"] {
+    text-align: left;
 }
